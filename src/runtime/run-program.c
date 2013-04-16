@@ -100,12 +100,15 @@ set_pty(char *pty_name)
 
 extern char **environ;
 int spawn(char *program, char *argv[], int sin, int sout, int serr,
-          int search, char *envp[], char *pty_name, int wait)
+          int search, char *envp[], char *pty_name, int wait, char *pwd)
 {
     pid_t pid;
     int fd;
     int channel[2];
     sigset_t sset;
+    int fail;
+
+    fail = 0;
 
     channel[0] = -1;
     channel[1] = -1;
@@ -193,16 +196,25 @@ int spawn(char *program, char *argv[], int sin, int sout, int serr,
         if (fd != channel[1]) close(fd);
 #endif
 
-    if (envp) {
-      environ = envp;
+    /* Change working directory. */
+    if (pwd) {
+        if (chdir(pwd) < 0) {
+            fail = 1;
+        }
     }
-    /* Exec the program. */
-    if (search)
-      execvp(program, argv);
-    else
-      execv(program, argv);
 
-    /* When exec fails and channel is available, send the errno value. */
+    if (!fail) {
+        if (envp) {
+            environ = envp;
+        }
+        /* Exec the program. */
+        if (search)
+            execvp(program, argv);
+        else
+            execv(program, argv);
+    }
+
+    /* When exec or chdir fails and channel is available, send the errno value. */
     if (-1 != channel[1]) {
         int our_errno = errno;
         int bytes = sizeof(int);
@@ -254,7 +266,8 @@ HANDLE spawn (
     int search,
     char *envp,
     char *ptyname,
-    int wait
+    int wait,
+    char *pwd
     )
 {
     int stdout_backup, stdin_backup, stderr_backup, wait_mode;
@@ -289,6 +302,13 @@ HANDLE spawn (
         wait_mode = P_NOWAIT;
     } else {
         wait_mode = P_WAIT;
+    }
+
+    /* Change working directory if supplied. */
+    if ( pwd ) {
+        if ( chdir ( pwd ) < 0) {
+            goto error_exit;
+        }
     }
 
     /* Spawn process given on the command line*/
