@@ -31,16 +31,14 @@
 
 ;;; If there is any CHECK-xxx template for TYPE, then return it,
 ;;; otherwise return NIL.
-;;; The second value is T if the template needs TYPE to be passed
 (defun type-check-template (type)
   (declare (type ctype type))
   (multiple-value-bind (check-ptype exact) (primitive-type type)
     (if exact
         (primitive-type-check check-ptype)
-        (multiple-value-bind (name type-needed)
-            (hairy-type-check-template-name type)
+        (let ((name (hairy-type-check-template-name type)))
           (if name
-              (values (template-or-lose name) type-needed)
+              (template-or-lose name)
               nil)))))
 
 ;;; Emit code in BLOCK to check that VALUE is of the specified TYPE,
@@ -51,10 +49,7 @@
 (defun emit-type-check (node block value result type)
   (declare (type tn value result) (type node node) (type ir2-block block)
            (type ctype type))
-  (multiple-value-bind (template type-needed) (type-check-template type)
-   (if type-needed
-       (emit-load-template node block template value result (list type))
-       (emit-move-template node block template value result)))
+  (emit-move-template node block (type-check-template type) value result)
   (values))
 
 ;;; Allocate an indirect value cell.
@@ -250,35 +245,39 @@
            (type ir2-block ir2-block)
            (type functional functional)
            (type tn res))
-  (aver (not (eql (functional-kind functional) :deleted)))
-  (unless (leaf-info functional)
-    (setf (leaf-info functional)
-          (make-entry-info :name (functional-debug-name functional))))
-  (let ((closure (etypecase functional
-                   (clambda
-                    (assertions-on-ir2-converted-clambda functional)
-                    (physenv-closure (get-lambda-physenv functional)))
-                   (functional
-                    (aver (eq (functional-kind functional) :toplevel-xep))
-                    nil)))
-        global-var)
-    (cond (closure
-           (let* ((physenv (node-physenv ref))
-                  (tn (find-in-physenv functional physenv)))
-             (emit-move ref ir2-block tn res)))
-          ;; we're about to emit a reference to a "closure" that's actually
-          ;; an inlinable global function.
-          ((and (global-var-p (setf global-var
-                                    (functional-inline-expanded functional)))
-                (eq :global-function (global-var-kind global-var)))
-           (ir2-convert-global-var ref ir2-block global-var res))
-          (t
-           ;; if we're here, we should have either a toplevel-xep (some
-           ;; global scope function in a different component) or an external
-           ;; reference to the "closure"'s body.
-           (aver (memq (functional-kind functional) '(:external :toplevel-xep)))
-           (let ((entry (make-load-time-constant-tn :entry functional)))
-             (emit-move ref ir2-block entry res)))))
+  (flet ((prepare ()
+           (aver (not (eql (functional-kind functional) :deleted)))
+           (unless (leaf-info functional)
+             (setf (leaf-info functional)
+                   (make-entry-info :name
+                                    (functional-debug-name functional))))))
+    (let ((closure (etypecase functional
+                     (clambda
+                      (assertions-on-ir2-converted-clambda functional)
+                      (physenv-closure (get-lambda-physenv functional)))
+                     (functional
+                      (aver (eq (functional-kind functional) :toplevel-xep))
+                      nil)))
+          global-var)
+      (cond (closure
+             (prepare)
+             (let* ((physenv (node-physenv ref))
+                    (tn (find-in-physenv functional physenv)))
+               (emit-move ref ir2-block tn res)))
+            ;; we're about to emit a reference to a "closure" that's actually
+            ;; an inlinable global function.
+            ((and (global-var-p (setf global-var
+                                      (functional-inline-expanded functional)))
+                  (eq :global-function (global-var-kind global-var)))
+             (ir2-convert-global-var ref ir2-block global-var res))
+            (t
+             ;; if we're here, we should have either a toplevel-xep (some
+             ;; global scope function in a different component) or an external
+             ;; reference to the "closure"'s body.
+             (prepare)
+             (aver (memq (functional-kind functional) '(:external :toplevel-xep)))
+             (let ((entry (make-load-time-constant-tn :entry functional)))
+               (emit-move ref ir2-block entry res))))))
   (values))
 
 (defun closure-initial-value (what this-env current-fp)
@@ -1831,7 +1830,9 @@
                   temp (first results))
              (move-lvar-result node block results lvar)
              (return))))))
-    (ir2-convert-full-call node block)))
+    (if (template-p (basic-combination-info node))
+        (ir2-convert-template node block)
+        (ir2-convert-full-call node block))))
 
 ;;; Convert the code in a component into VOPs.
 (defun ir2-convert (component)
@@ -1895,9 +1896,13 @@
 
 ;;; If necessary, emit a terminal unconditional branch to go to the
 ;;; successor block. If the successor is the component tail, then
-;;; there isn't really any successor, but if the end is an unknown,
-;;; non-tail call, then we emit an error trap just in case the
-;;; function really does return.
+;;; there isn't really any successor, but if the end is a non-tail
+;;; call to a function that's not *known* to never return, then we
+;;; emit an error trap just in case the function really does return.
+;;;
+;;; Trapping after known calls makes it easier to understand type
+;;; derivation bugs at runtime: they show up as nil-fun-returned-error,
+;;; rather than the execution of arbitrary code or error traps.
 (defun finish-ir2-block (block)
   (declare (type cblock block))
   (let* ((2block (block-info block))
@@ -1908,15 +1913,20 @@
       (let ((target (first succ)))
         (cond ((eq target (component-tail (block-component block)))
                (when (and (basic-combination-p last)
-                          (eq (basic-combination-kind last) :full))
+                          (or (eq (basic-combination-kind last) :full)
+                              (and (eq (basic-combination-kind last) :known)
+                                   (eq (basic-combination-info last) :full))))
                  (let* ((fun (basic-combination-fun last))
                         (use (lvar-uses fun))
                         (name (and (ref-p use)
                                    (leaf-has-source-name-p (ref-leaf use))
-                                   (leaf-source-name (ref-leaf use)))))
+                                   (leaf-source-name (ref-leaf use))))
+                        (ftype (and (info :function :info name) ; only use the FTYPE if
+                                    (info :function :type name)))) ; NAME was DEFKNOWN
                    (unless (or (node-tail-p last)
-                               (info :function :info name)
-                               (policy last (zerop safety)))
+                               (policy last (zerop safety))
+                               (and (fun-type-p ftype)
+                                    (eq *empty-type* (fun-type-returns ftype))))
                      (vop nil-fun-returned-error last 2block
                           (if name
                               (emit-constant name)

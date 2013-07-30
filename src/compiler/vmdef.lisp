@@ -97,7 +97,7 @@
 ;;;; generation of emit functions
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  ;; We need the EVAL-WHEN because %EMIT-GENERIC-VOP (below)
+  ;; We need the EVAL-WHEN because EMIT-VOP (below)
   ;; uses #.MAX-VOP-TN-REFS, not just MAX-VOP-TN-REFS.
   ;; -- AL 20010218
   ;;
@@ -114,10 +114,16 @@
 
 (def!constant sc-bits (integer-length (1- sc-number-limit)))
 
-(defun emit-generic-vop (node block template args results &optional info)
-  (%emit-generic-vop node block template args results info))
-
-(defun %emit-generic-vop (node block template args results info)
+;;; Emit a VOP for TEMPLATE. Arguments:
+;;; NODE Node for source context.
+;;; BLOCK IR2-BLOCK that we place the VOP in.
+;;; TEMPLATE: VOP template
+;;; ARGS Head of argument TN-REF list.
+;;; RESULT Head of result TN-REF list.
+;;; INFO If INFO-ARG-COUNT is non-zero, then a list of the magic arguments.
+;;;
+;;; Return the emitted vop
+(defun emit-vop (node block template args results &optional info)
   (let* ((vop (make-vop block node template args results))
          (num-args (vop-info-num-args template))
          (last-arg (1- num-args))
@@ -186,7 +192,7 @@
                    (target-if-desirable
                     (aref refs (ldb (byte 8 8) target))
                     (aref refs (ldb (byte 8 0) target)))))))
-           (values vop vop))
+           vop)
       (fill *vop-tn-refs* nil))))
 
 ;;;; function translation stuff

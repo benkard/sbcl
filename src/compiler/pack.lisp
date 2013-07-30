@@ -215,24 +215,26 @@
   (let* ((sb (sc-sb sc))
          (size (finite-sb-current-size sb))
          (align-mask (1- (sc-alignment sc)))
-         (inc (max (sb-size sb)
+         (inc (max (finite-sb-size-increment sb)
                    (+ (sc-element-size sc)
                       (- (logandc2 (+ size align-mask) align-mask)
                          size))
                    (- needed-size size)))
-         (new-size (+ size inc))
+         (new-size (let ((align-mask (1- (finite-sb-size-alignment sb))))
+                     (logandc2 (+  size inc align-mask) align-mask)))
          (conflicts (finite-sb-conflicts sb))
          (block-size (if (zerop (length conflicts))
                          (ir2-block-count *component-being-compiled*)
-                         (length (the simple-vector (svref conflicts 0))))))
-    (declare (type index inc new-size))
+                         (length (the simple-vector (svref conflicts 0)))))
+         (padded-size (ash 1 (integer-length (1- new-size)))))
+    (declare (type index inc new-size padded-size))
     (aver (eq (sb-kind sb) :unbounded))
 
-    (when (> new-size (length conflicts))
-      (let ((new-conf (make-array new-size)))
+    (when (> padded-size (length conflicts))
+      (let ((new-conf (make-array padded-size)))
         (replace new-conf conflicts)
         (do ((i size (1+ i)))
-            ((= i new-size))
+            ((= i padded-size))
           (declare (type index i))
           (let ((loc-confs (make-array block-size)))
             (dotimes (j block-size)
@@ -243,23 +245,23 @@
             (setf (svref new-conf i) loc-confs)))
         (setf (finite-sb-conflicts sb) new-conf))
 
-      (let ((new-live (make-array new-size)))
+      (let ((new-live (make-array padded-size)))
         (replace new-live (finite-sb-always-live sb))
         (do ((i size (1+ i)))
-            ((= i new-size))
+            ((= i padded-size))
           (setf (svref new-live i)
                 (make-array block-size
                             :initial-element 0
                             :element-type 'bit)))
         (setf (finite-sb-always-live sb) new-live))
 
-      (let ((new-live-count (make-array new-size)))
+      (let ((new-live-count (make-array padded-size)))
         (declare (optimize speed)) ;; FILL deftransform
         (replace new-live-count (finite-sb-always-live-count sb))
         (fill new-live-count 0 :start size)
         (setf (finite-sb-always-live-count sb) new-live-count))
 
-      (let ((new-tns (make-array new-size :initial-element nil)))
+      (let ((new-tns (make-array padded-size :initial-element nil)))
         (replace new-tns (finite-sb-live-tns sb))
         (fill (finite-sb-live-tns sb) nil)
         (setf (finite-sb-live-tns sb) new-tns)))
@@ -1349,7 +1351,7 @@
 ;;; If we are attempting to pack in the SC of the save TN for a TN
 ;;; with a :SPECIFIED-SAVE TN, then we pack in that location, instead
 ;;; of allocating a new stack location.
-(defun pack-tn (tn restricted optimize)
+(defun pack-tn (tn restricted optimize &key (allow-unbounded-sc t))
   (declare (type tn tn))
   (let* ((original (original-tn tn))
          (fsc (tn-sc tn))
@@ -1362,12 +1364,15 @@
     (do ((sc fsc (pop alternates)))
         ((null sc)
          (failed-to-pack-error tn restricted))
+      (unless (or allow-unbounded-sc
+                  (neq (sb-kind (sc-sb sc)) :unbounded))
+        (return nil))
       (when (eq sc specified-save-sc)
         (unless (tn-offset save)
           (pack-tn save nil optimize))
         (setf (tn-offset tn) (tn-offset save))
         (setf (tn-sc tn) (tn-sc save))
-        (return))
+        (return t))
       (when (or restricted
                 (not (and (minusp (tn-cost tn)) (sc-save-p sc))))
         (let ((loc (or (find-ok-target-offset original sc)
@@ -1382,7 +1387,7 @@
             (add-location-conflicts original sc loc optimize)
             (setf (tn-sc tn) sc)
             (setf (tn-offset tn) loc)
-            (return))))))
+            (return t))))))
   (values))
 
 ;;; Pack a wired TN, checking that the offset is in bounds for the SB,
@@ -1494,6 +1499,31 @@
         (setf (finite-sb-live-tns sb)
               (make-array size :initial-element nil))))))
 
+(defun tn-lexical-depth (tn)
+  (let ((path t)) ; dummy initial value
+    (labels ((path (lambda)
+               (nreverse (loop while lambda
+                               collect lambda
+                               do (setf lambda (lambda-parent lambda)))))
+             (register-scope (lambda)
+               (let ((new-path (path lambda)))
+                 (setf path (if (eql path t)
+                                new-path
+                                (subseq path
+                                        0 (mismatch path new-path))))))
+             (walk-tn-refs (ref)
+               (do ((ref ref (tn-ref-next ref)))
+                   ((null ref))
+                 (binding* ((node (vop-node (tn-ref-vop ref))
+                                  :exit-if-null))
+                   (register-scope (lexenv-lambda
+                                    (node-lexenv node)))))))
+      (walk-tn-refs (tn-reads tn))
+      (walk-tn-refs (tn-writes tn))
+      (if (eql path t)
+          most-positive-fixnum
+          (length path)))))
+
 (defun pack (component)
   (unwind-protect
        (let ((optimize nil)
@@ -1549,7 +1579,8 @@
            (assign-tn-depths component))
 
          ;; Allocate normal TNs, starting with the TNs that are used
-         ;; in deep loops.
+         ;; in deep loops.  Only allocate in finite SCs (i.e. not on
+         ;; the stack).
          (collect ((tns))
            (do-ir2-blocks (block component)
              (let ((ltns (ir2-block-local-tns block)))
@@ -1564,7 +1595,7 @@
                      ;; well revert to the old behaviour of just
                      ;; packing TNs linearly as they appear.
                      (unless *loop-analyze*
-                       (pack-tn tn nil optimize))
+                       (pack-tn tn nil optimize :allow-unbounded-sc nil))
                      (tns tn))))))
            (dolist (tn (stable-sort (tns)
                                     (lambda (a b)
@@ -1577,14 +1608,36 @@
                                          (> (tn-cost a) (tn-cost b)))
                                         (t nil)))))
              (unless (tn-offset tn)
-               (pack-tn tn nil optimize))))
+               (pack-tn tn nil optimize :allow-unbounded-sc nil))))
 
-         ;; Pack any leftover normal TNs. This is to deal with :MORE TNs,
-         ;; which could possibly not appear in any local TN map.
-         (do ((tn (ir2-component-normal-tns 2comp) (tn-next tn)))
-             ((null tn))
-           (unless (tn-offset tn)
-             (pack-tn tn nil optimize)))
+         ;; Pack any leftover normal TNs that could not be allocated
+         ;; to finite SCs, or TNs that do not appear in any local TN
+         ;; map (e.g. :MORE TNs).  Since we'll likely be allocating
+         ;; on the stack, first allocate TNs that are associated with
+         ;; code at shallow lexical depths: this will allocate long
+         ;; live ranges (i.e. TNs with more conflicts) first, and
+         ;; hopefully minimise stack fragmentation.
+         ;;
+         ;; Collect in reverse order to give priority to older TNs.
+         (let ((contiguous-tns '())
+               (tns '()))
+           (do ((tn (ir2-component-normal-tns 2comp) (tn-next tn)))
+               ((null tn))
+             (unless (tn-offset tn)
+               (let ((key (cons tn (tn-lexical-depth tn))))
+                 (if (memq (tn-kind tn) '(:environment :debug-environment
+                                          :component))
+                     (push key contiguous-tns)
+                     (push key tns)))))
+           (flet ((pack-tns (tns)
+                    (dolist (tn (stable-sort tns #'< :key #'cdr))
+                      (let ((tn (car tn)))
+                        (unless (tn-offset tn)
+                          (pack-tn tn nil optimize))))))
+             ;; first pack TNs that are known to have simple
+             ;; live ranges (contiguous lexical scopes)
+             (pack-tns contiguous-tns)
+             (pack-tns tns)))
 
          ;; Do load TN packing and emit saves.
          (let ((*repack-blocks* nil))

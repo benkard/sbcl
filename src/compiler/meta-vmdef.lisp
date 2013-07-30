@@ -27,7 +27,8 @@
 ;;;
 ;;; We enter the basic structure at meta-compile time, and then fill
 ;;; in the missing slots at load time.
-(defmacro define-storage-base (name kind &key size)
+(defmacro define-storage-base (name kind &key size (size-increment size)
+                                           (size-alignment 1))
 
   (declare (type symbol name))
   (declare (type (member :finite :unbounded :non-packed) kind))
@@ -39,11 +40,16 @@
        (error "A size specification is meaningless in a ~S SB." kind)))
     ((:finite :unbounded)
      (unless size (error "Size is not specified in a ~S SB." kind))
-     (aver (typep size 'unsigned-byte))))
+     (aver (typep size 'unsigned-byte))
+     (aver (= 1 (logcount size-alignment)))
+     (aver (not (logtest size (1- size-alignment))))
+     (aver (not (logtest size-increment (1- size-alignment))))))
 
   (let ((res (if (eq kind :non-packed)
                  (make-sb :name name :kind kind)
-                 (make-finite-sb :name name :kind kind :size size))))
+                 (make-finite-sb :name name :kind kind :size size
+                                 :size-increment size-increment
+                                 :size-alignment size-alignment))))
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)
          (/show0 "about to SETF GETHASH META-SB-NAMES in DEFINE-STORAGE-BASE")
@@ -638,7 +644,7 @@
           (let ((target (find-operand (operand-parse-target op) parse
                                       '(:temporary :result))))
             ;; KLUDGE: These formulas must be consistent with those in
-            ;; %EMIT-GENERIC-VOP, and this is currently maintained by
+            ;; EMIT-VOP, and this is currently maintained by
             ;; hand. -- WHN 2002-01-30, paraphrasing APD
             (targets (+ (* index max-vop-tn-refs)
                         (ecase (operand-parse-kind target)
@@ -709,8 +715,7 @@
                                      :element-type '(specializable ,te-type)))))))))
 
 (defun make-emit-function-and-friends (parse)
-  `(:emit-function #'emit-generic-vop
-    :temps ,(compute-temporaries-description parse)
+  `(:temps ,(compute-temporaries-description parse)
     ,@(compute-ref-ordering parse)))
 
 ;;;; generator functions
@@ -1408,14 +1413,18 @@
         ((symbolp type)
          ``(:or ,(primitive-type-or-lose ',type)))
         (t
-         (ecase (first type)
+         (ecase (car type)
            (:or
             ``(:or ,,@(mapcar (lambda (type)
                                 `(primitive-type-or-lose ',type))
                               (rest type))))
            (:constant
             ``(:constant ,#'(lambda (x)
-                              (sb!xc:typep x ',(second type)))
+                              ;; Can't handle SATISFIES during XC
+                              ,(if (and (consp (second type))
+                                        (eq (caadr type) 'satisfies))
+                                   `(,(cadadr type) x)
+                                   `(sb!xc:typep x ',(second type))))
                          ,',(second type)))))))
 
 (defun specify-operand-types (types ops more-ops)
@@ -1742,15 +1751,8 @@
 ;;; Call the emit function for TEMPLATE, linking the result in at the
 ;;; end of BLOCK.
 (defmacro emit-template (node block template args results &optional info)
-  (with-unique-names (first last)
-    (once-only ((n-node node)
-                (n-block block)
-                (n-template template))
-      `(multiple-value-bind (,first ,last)
-           (funcall (template-emit-function ,n-template)
-                    ,n-node ,n-block ,n-template ,args ,results
-                    ,@(when info `(,info)))
-         (insert-vop-sequence ,first ,last ,n-block nil)))))
+  `(emit-and-insert-vop ,node ,block ,template ,args ,results nil
+                        ,@(when info `(,info))))
 
 ;;; VOP Name Node Block Arg* Info* Result*
 ;;;

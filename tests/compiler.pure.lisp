@@ -1,3 +1,4 @@
+
 ;;;; various compiler tests without side effects
 
 ;;;; This software is part of the SBCL system. See the README file for
@@ -3089,7 +3090,7 @@
          (array-in-bounds-p a 5 2))))))
 
 ;;; optimizing (EXPT -1 INTEGER)
-(test-util:with-test (:name (expt minus-one integer))
+(with-test (:name (expt minus-one integer))
   (dolist (x '(-1 -1.0 -1.0d0))
     (let ((fun (compile nil `(lambda (x) (expt ,x (the fixnum x))))))
       (assert (not (ctu:find-named-callees fun)))
@@ -4578,8 +4579,7 @@
           (test (+ most-negative-fixnum x) y))))))
 
 ;; expected failure
-(test-util:with-test (:name :fold-index-addressing-positive-offset
-                      :fails-on '(and))
+(with-test (:name :fold-index-addressing-positive-offset)
   (let ((f (compile nil `(lambda (i)
                            (if (typep i '(integer -31 31))
                                (aref #. (make-array 63) (+ i 31))
@@ -4587,28 +4587,185 @@
     (funcall f -31)))
 
 ;; 5d3a728 broke something like this in CL-PPCRE
-(test-util:with-test (:name :fold-index-addressing-potentially-negative-index)
+(with-test (:name :fold-index-addressing-potentially-negative-index)
   (compile nil `(lambda (index vector)
                   (declare (optimize speed (safety 0))
                            ((simple-array character (*)) vector)
                            ((unsigned-byte 24) index))
                   (aref vector (1+ (mod index (1- (length vector))))))))
 
-(test-util:with-test (:name :constant-fold-ash/right-fixnum)
+(with-test (:name :constant-fold-ash/right-fixnum)
   (compile nil `(lambda (a b)
                   (declare (type fixnum a)
                            (type (integer * -84) b))
                   (ash a b))))
 
-(test-util:with-test (:name :constant-fold-ash/right-word)
+(with-test (:name :constant-fold-ash/right-word)
   (compile nil `(lambda (a b)
                   (declare (type word a)
                            (type (integer * -84) b))
                   (ash a b))))
 
-(test-util:with-test (:name :nconc-derive-type)
+(with-test (:name :nconc-derive-type)
   (let ((function (compile nil `(lambda (x y)
                                   (declare (type (or cons fixnum) x))
                                   (nconc x y)))))
     (assert (equal (sb-kernel:%simple-fun-type function)
                    '(function ((or cons fixnum) t) (values cons &optional))))))
+
+;; make sure that all data-vector-ref-with-offset VOPs are either
+;; specialised on a 0 offset or accept signed indices
+(with-test (:name :data-vector-ref-with-offset-signed-index)
+  (let ((dvr (find-symbol "DATA-VECTOR-REF-WITH-OFFSET" "SB-KERNEL")))
+    (when dvr
+      (assert
+       (null
+        (loop for info in (sb-c::fun-info-templates
+                           (sb-c::fun-info-or-lose dvr))
+              for (nil second-arg third-arg) = (sb-c::vop-info-arg-types info)
+              unless (or (typep second-arg '(cons (eql :constant)))
+                         (find '(integer 0 0) third-arg :test 'equal)
+                         (equal second-arg
+                                `(:or ,(sb-c::primitive-type-or-lose
+                                        'sb-vm::positive-fixnum)
+                                      ,(sb-c::primitive-type-or-lose
+                                        'fixnum))))
+                collect info))))))
+
+(with-test (:name :data-vector-set-with-offset-signed-index)
+  (let ((dvr (find-symbol "DATA-VECTOR-SET-WITH-OFFSET" "SB-KERNEL")))
+    (when dvr
+      (assert
+       (null
+        (loop for info in (sb-c::fun-info-templates
+                           (sb-c::fun-info-or-lose dvr))
+              for (nil second-arg third-arg) = (sb-c::vop-info-arg-types info)
+              unless (or (typep second-arg '(cons (eql :constant)))
+                         (find '(integer 0 0) third-arg :test 'equal)
+                         (equal second-arg
+                                `(:or ,(sb-c::primitive-type-or-lose
+                                        'sb-vm::positive-fixnum)
+                                      ,(sb-c::primitive-type-or-lose
+                                        'fixnum))))
+                collect info))))))
+
+(with-test (:name :maybe-inline-ref-to-dead-lambda)
+  (compile nil `(lambda (string)
+                  (declare (optimize speed (space 0)))
+                  (cond ((every #'digit-char-p string)
+                         nil)
+                        ((some (lambda (c)
+                                 (digit-char-p c))
+                               string))))))
+
+;; the x87 backend used to sometimes signal FP errors during boxing,
+;; because converting between double and single float values was a
+;; noop (fixed), and no doubt many remaining issues.  We now store
+;; the value outside pseudo-atomic, so any SIGFPE should be handled
+;; corrrectly.
+;;
+;; When it fails, this test lands into ldb.
+(with-test (:name :no-overflow-during-allocation)
+  (handler-case (eval '(cosh 90))
+    (floating-point-overflow ()
+      t)))
+
+;; unbounded integer types could break integer arithmetic.
+(with-test (:name :bug-1199127)
+  (compile nil `(lambda (b)
+                  (declare (type (integer -1225923945345 -832450738898) b))
+                  (declare (optimize (speed 3) (space 3) (safety 2)
+                                     (debug 0) (compilation-speed 1)))
+                  (loop for lv1 below 3
+                        sum (logorc2
+                             (if (>= 0 lv1)
+                                 (ash b (min 25 lv1))
+                                 0)
+                             -2)))))
+
+;; non-trivial modular arithmetic operations would evaluate to wider results
+;; than expected, and never be cut to the right final bitwidth.
+(with-test (:name :bug-1199428-1)
+  (let ((f1 (compile nil `(lambda (a c)
+                            (declare (type (integer -2 1217810089) a))
+                            (declare (type (integer -6895591104928 -561736648588) c))
+                            (declare (optimize (speed 2) (space 0) (safety 2) (debug 0)
+                                               (compilation-speed 3)))
+                            (logandc1 (gcd c)
+                                      (+ (- a c)
+                                         (loop for lv2 below 1 count t))))))
+        (f2 (compile nil `(lambda (a c)
+                            (declare (notinline - + gcd logandc1))
+                            (declare (optimize (speed 1) (space 1) (safety 0) (debug 1)
+                                               (compilation-speed 3)))
+                            (logandc1 (gcd c)
+                                      (+ (- a c)
+                                         (loop for lv2 below 1 count t)))))))
+    (let ((a 530436387)
+          (c -4890629672277))
+      (assert (eql (funcall f1 a c)
+                   (funcall f2 a c))))))
+
+(with-test (:name :bug-1199428-2)
+  (let ((f1 (compile nil `(lambda (a b)
+                            (declare (type (integer -1869232508 -6939151) a))
+                            (declare (type (integer -11466348357 -2645644006) b))
+                            (declare (optimize (speed 1) (space 0) (safety 2) (debug 2)
+                                               (compilation-speed 2)))
+                            (logand (lognand a -6) (* b -502823994)))))
+        (f2 (compile nil `(lambda (a b)
+                            (logand (lognand a -6) (* b -502823994))))))
+    (let ((a -1491588365)
+          (b -3745511761))
+      (assert (eql (funcall f1 a b)
+                   (funcall f2 a b))))))
+
+;; win32 is very specific about the order in which catch blocks
+;; must be allocated on the stack
+(with-test (:name :bug-121581169)
+  (let ((f (compile nil
+                    `(lambda ()
+                       (STRING=
+                        (LET ((% 23))
+                          (WITH-OUTPUT-TO-STRING (G13908)
+                            (PRINC
+                             (LET ()
+                               (DECLARE (OPTIMIZE (SB-EXT:INHIBIT-WARNINGS 3)))
+                               (HANDLER-CASE
+                                   (WITH-OUTPUT-TO-STRING (G13909) (PRINC %A%B% G13909) G13909)
+                                 (UNBOUND-VARIABLE NIL
+                                   (HANDLER-CASE
+                                       (WITH-OUTPUT-TO-STRING (G13914)
+                                         (PRINC %A%B% G13914)
+                                         (PRINC "" G13914)
+                                         G13914)
+                                     (UNBOUND-VARIABLE NIL
+                                       (HANDLER-CASE
+                                           (WITH-OUTPUT-TO-STRING (G13913)
+                                             (PRINC %A%B G13913)
+                                             (PRINC "%" G13913)
+                                             G13913)
+                                         (UNBOUND-VARIABLE NIL
+                                           (HANDLER-CASE
+                                               (WITH-OUTPUT-TO-STRING (G13912)
+                                                 (PRINC %A% G13912)
+                                                 (PRINC "b%" G13912)
+                                                 G13912)
+                                             (UNBOUND-VARIABLE NIL
+                                               (HANDLER-CASE
+                                                   (WITH-OUTPUT-TO-STRING (G13911)
+                                                     (PRINC %A G13911)
+                                                     (PRINC "%b%" G13911)
+                                                     G13911)
+                                                 (UNBOUND-VARIABLE NIL
+                                                   (HANDLER-CASE
+                                                       (WITH-OUTPUT-TO-STRING (G13910)
+                                                         (PRINC % G13910)
+                                                         (PRINC "a%b%" G13910)
+                                                         G13910)
+                                                     (UNBOUND-VARIABLE NIL
+                                                       (ERROR "Interpolation error in \"%a%b%\"
+"))))))))))))))
+                             G13908)))
+                        "23a%b%")))))
+    (assert (funcall f))))

@@ -67,13 +67,25 @@
       (sleep 2)
       (sleep 2))))
 
-;;; SLEEP should not cons
+;;; SLEEP should not cons except on 32-bit platforms when
+;;; (> (mod seconds 1) (* most-positive-fixnum 1e-9))
 (with-test (:name (sleep :non-consing) :fails-on :win32)
   (ctu:assert-no-consing (sleep 0.00001s0))
   (locally (declare (notinline sleep))
     (ctu:assert-no-consing (sleep 0.00001s0))
     (ctu:assert-no-consing (sleep 0.00001d0))
     (ctu:assert-no-consing (sleep 1/100000003))))
+
+;;; Changes to make SLEEP cons less led to SLEEP
+;;; not sleeping at all on 32-bit platforms when
+;;; (> (mod seconds 1) (* most-positive-fixnum 1e-9)).
+(with-test (:name :bug-1194673)
+  (assert (eq :timeout
+              (handler-case
+                  (with-timeout 0.01
+                    (sleep 0.6))
+                (timeout ()
+                  :timeout)))))
 
 ;;; SLEEP should work with large integers as well
 (with-test (:name (sleep pretty-much-forever))

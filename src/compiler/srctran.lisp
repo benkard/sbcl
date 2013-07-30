@@ -2771,8 +2771,13 @@
   (defun %ash/right (integer amount)
     (ash integer (- amount)))
 
-  (deftransform ash ((integer amount) (sb!vm:signed-word (integer * 0)))
+  (deftransform ash ((integer amount))
     "Convert ASH of signed word to %ASH/RIGHT"
+    (unless (and (csubtypep (lvar-type integer) ; do that ourselves to avoid
+                            (specifier-type 'sb!vm:signed-word)) ; optimization
+                 (csubtypep (lvar-type amount)  ; notes.
+                            (specifier-type '(integer * 0))))
+      (give-up-ir1-transform))
     (when (constant-lvar-p amount)
       (give-up-ir1-transform))
     (let ((use (lvar-uses amount)))
@@ -2789,8 +2794,13 @@
                                       ,(1- sb!vm:n-word-bits)
                                       (- amount)))))))
 
-  (deftransform ash ((integer amount) (word (integer * 0)))
+  (deftransform ash ((integer amount))
     "Convert ASH of word to %ASH/RIGHT"
+    (unless (and (csubtypep (lvar-type integer)
+                            (specifier-type 'sb!vm:word))
+                 (csubtypep (lvar-type amount)
+                            (specifier-type '(integer * 0))))
+      (give-up-ir1-transform))
     (when (constant-lvar-p amount)
       (give-up-ir1-transform))
     (let ((use (lvar-uses amount)))
@@ -2910,9 +2920,48 @@
                (setf (node-reoptimize node) t)
                (setf (block-reoptimize (node-block node)) t)
                (reoptimize-component (node-component node) :maybe))
-             (cut-node (node &aux did-something)
+             (insert-lvar-cut (lvar)
+               "Insert a LOGAND/MASK-SIGNED-FIELD to cut the value of LVAR
+                to the required bit width. Returns T if any change was made.
+
+                When the destination of LVAR will definitely cut LVAR's value
+                to width (i.e. it's a logand or mask-signed-field with constant
+                other argument), do nothing. Otherwise, splice LOGAND/M-S-F in."
+               (binding* ((dest (lvar-dest lvar) :exit-if-null)
+                          (nil  (combination-p dest) :exit-if-null)
+                          (name (lvar-fun-name (combination-fun dest) t))
+                          (args (combination-args dest)))
+                 (case name
+                   (logand
+                    (when (= 2 (length args))
+                      (let ((other (if (eql (first args) lvar)
+                                       (second args)
+                                       (first args))))
+                        (when (and (constant-lvar-p other)
+                                   (ctypep (lvar-value other) type)
+                                   (not signedp))
+                          (return-from insert-lvar-cut)))))
+                   (mask-signed-field
+                    (when (and signedp
+                               (eql lvar (second args))
+                               (constant-lvar-p (first args))
+                               (<= (lvar-value (first args)) width))
+                      (return-from insert-lvar-cut)))))
+               (filter-lvar lvar
+                            (if signedp
+                                `(mask-signed-field ,width 'dummy)
+                                `(logand 'dummy ,(ldb (byte width 0) -1))))
+               (do-uses (node lvar)
+                 (setf (block-reoptimize (node-block node)) t)
+                 (reoptimize-component (node-component node) :maybe))
+               t)
+             (cut-node (node &aux did-something over-wide)
+               "Try to cut a node to width. The primary return value is
+                whether we managed to cut (cleverly), and the second whether
+                anything was changed.  The third return value tells whether
+                the cut value might be wider than expected."
                (when (block-delete-p (node-block node))
-                 (return-from cut-node))
+                 (return-from cut-node (values t nil)))
                (typecase node
                  (ref
                   (typecase (ref-leaf node)
@@ -2921,76 +2970,100 @@
                             (new-value (if signedp
                                            (mask-signed-field width constant-value)
                                            (ldb (byte width 0) constant-value))))
-                       (unless (= constant-value new-value)
-                         (change-ref-leaf node (make-constant new-value)
-                                          :recklessly t)
-                         (let ((lvar (node-lvar node)))
-                           (setf (lvar-%derived-type lvar)
-                                 (and (lvar-has-single-use-p lvar)
-                                      (make-values-type :required (list (ctype-of new-value))))))
-                         (setf (block-reoptimize (node-block node)) t)
-                         (reoptimize-component (node-component node) :maybe)
-                         t)))
-                    (lambda-var
-                     (binding* ((dest (lvar-dest lvar) :exit-if-null)
-                                (nil  (combination-p dest) :exit-if-null)
-                                (name (lvar-fun-name (combination-fun dest))))
-                       ;; we're about to insert an m-s-f/logand between a ref to
-                       ;; a variable and another m-s-f/logand. No point in doing
-                       ;; that; the parent m-s-f/logand was already cut to width
-                       ;; anyway.
-                       (unless (or (cond (signedp
-                                          (and (eql name 'mask-signed-field)
-                                               (eql lvar (second
-                                                          (combination-args
-                                                           dest)))))
-                                         (t
-                                          (eql name 'logand)))
-                                   (csubtypep (lvar-type lvar) type))
-                         (filter-lvar lvar
-                                      (if signedp
-                                          `(mask-signed-field ,width 'dummy)
-                                          `(logand 'dummy ,(ldb (byte width 0) -1))))
-                         (setf (block-reoptimize (node-block node)) t)
-                         (reoptimize-component (node-component node) :maybe)
-                         t)))))
+                       (cond ((= constant-value new-value)
+                              (values t nil)) ; we knew what to do and did nothing
+                             (t
+                              (change-ref-leaf node (make-constant new-value)
+                                               :recklessly t)
+                              (let ((lvar (node-lvar node)))
+                                (setf (lvar-%derived-type lvar)
+                                      (and (lvar-has-single-use-p lvar)
+                                           (make-values-type :required (list (ctype-of new-value))))))
+                              (setf (block-reoptimize (node-block node)) t)
+                              (reoptimize-component (node-component node) :maybe)
+                              (values t t)))))))
                  (combination
                   (when (eq (basic-combination-kind node) :known)
                     (let* ((fun-ref (lvar-use (combination-fun node)))
                            (fun-name (lvar-fun-name (combination-fun node)))
                            (modular-fun (find-modular-version fun-name kind
                                                               signedp width)))
-                      (when (and modular-fun
-                                 (not (and (eq fun-name 'logand)
-                                           (csubtypep
-                                            (single-value-type (node-derived-type node))
-                                            type))))
-                        (binding* ((name (etypecase modular-fun
-                                           ((eql :good) fun-name)
-                                           (modular-fun-info
-                                            (modular-fun-info-name modular-fun))
-                                           (function
-                                            (funcall modular-fun node width)))
-                                         :exit-if-null))
-                          (unless (eql modular-fun :good)
-                            (setq did-something t)
-                            (change-ref-leaf
-                             fun-ref
-                             (find-free-fun name "in a strange place"))
-                            (setf (combination-kind node) :full))
-                          (unless (functionp modular-fun)
-                            (dolist (arg (basic-combination-args node))
-                              (when (cut-lvar arg)
-                                (setq did-something t))))
-                          (when did-something
-                            (reoptimize-node node name))
-                          did-something)))))))
-             (cut-lvar (lvar &aux did-something)
+                      (cond ((not modular-fun)
+                             ;; don't know what to do here
+                             (values nil nil))
+                            ((let ((dtype (single-value-type
+                                           (node-derived-type node))))
+                               (and
+                                (case fun-name
+                                  (logand
+                                   (csubtypep dtype
+                                              (specifier-type 'unsigned-byte)))
+                                  (logior
+                                   (csubtypep dtype
+                                              (specifier-type '(integer * 0))))
+                                  (mask-signed-field
+                                   t)
+                                  (t nil))
+                                (csubtypep dtype type)))
+                             ;; nothing to do
+                             (values t nil))
+                            (t
+                             (binding* ((name (etypecase modular-fun
+                                                ((eql :good) fun-name)
+                                                (modular-fun-info
+                                                 (modular-fun-info-name modular-fun))
+                                                (function
+                                                 (funcall modular-fun node width)))
+                                              :exit-if-null))
+                               (unless (eql modular-fun :good)
+                                 (setq did-something t
+                                       over-wide t)
+                                 (change-ref-leaf
+                                  fun-ref
+                                  (find-free-fun name "in a strange place"))
+                                 (setf (combination-kind node) :full))
+                               (unless (functionp modular-fun)
+                                 (dolist (arg (basic-combination-args node))
+                                   (multiple-value-bind (change wide)
+                                       (cut-lvar arg)
+                                     (setf did-something (or did-something change)
+                                           over-wide (or over-wide wide)))))
+                               (when did-something
+                                 (reoptimize-node node name))
+                               (values t did-something over-wide)))))))))
+             (cut-lvar (lvar &key head
+                        &aux did-something must-insert over-wide)
+               "Cut all the LVAR's use nodes. If any of them wasn't handled
+                and its type is too wide for the operation we wish to perform
+                insert an explicit bit-width narrowing operation (LOGAND or
+                MASK-SIGNED-FIELD) between the LVAR (*) and its destination.
+                The narrowing operation might not be inserted if the LVAR's
+                destination is already such an operation, to avoid endless
+                recursion.
+
+                If we're at the head, forcibly insert a cut operation if the
+                result might be too wide.
+
+                (*) We can't easily do that for each node, and doing so might
+                result in code bloat, anyway. (I'm also not sure it would be
+                correct for complicated C/D FG)"
                (do-uses (node lvar)
-                 (when (cut-node node)
-                   (setq did-something t)))
-               did-something))
-      (cut-lvar lvar))))
+                 (multiple-value-bind (handled any-change wide)
+                     (cut-node node)
+                   (setf did-something (or did-something any-change)
+                         must-insert (or must-insert
+                                         (not (or handled
+                                                  (csubtypep (single-value-type
+                                                              (node-derived-type node))
+                                                             type))))
+                         over-wide (or over-wide wide))))
+               (when (or must-insert
+                         (and head over-wide))
+                 (setf did-something (or (insert-lvar-cut lvar) did-something)
+                       ;; we're just the right width after an explicit cut.
+                       over-wide nil))
+               (values did-something over-wide)))
+      (cut-lvar lvar :head t))))
 
 (defun best-modular-version (width signedp)
   ;; 1. exact width-matched :untagged
@@ -2998,7 +3071,10 @@
   ;; 3. >/>= width-matched :untagged
   (let* ((uuwidths (modular-class-widths *untagged-unsigned-modular-class*))
          (uswidths (modular-class-widths *untagged-signed-modular-class*))
-         (uwidths (merge 'list uuwidths uswidths #'< :key #'car))
+         (uwidths (if (and uuwidths uswidths)
+                      (merge 'list (copy-list uuwidths) (copy-list uswidths)
+                             #'< :key #'car)
+                      (or uuwidths uswidths)))
          (twidths (modular-class-widths *tagged-modular-class*)))
     (let ((exact (find (cons width signedp) uwidths :test #'equal)))
       (when exact
@@ -3016,53 +3092,87 @@
           (return-from best-modular-version
             (values (car ugt) :untagged (cdr ugt))))))))
 
+(defun integer-type-numeric-bounds (type)
+  (typecase type
+    (numeric-type (values (numeric-type-low type)
+                          (numeric-type-high type)))
+    (union-type
+     (let ((low  nil)
+           (high nil))
+       (dolist (type (union-type-types type) (values low high))
+         (unless (and (numeric-type-p type)
+                      (eql (numeric-type-class type) 'integer))
+           (return (values nil nil)))
+         (let ((this-low (numeric-type-low type))
+               (this-high (numeric-type-high type)))
+           (unless (and this-low this-high)
+             (return (values nil nil)))
+           (setf low  (min this-low  (or low  this-low))
+                 high (max this-high (or high this-high)))))))))
+
 (defoptimizer (logand optimizer) ((x y) node)
   (let ((result-type (single-value-type (node-derived-type node))))
-    (when (numeric-type-p result-type)
-      (let ((low (numeric-type-low result-type))
-            (high (numeric-type-high result-type)))
-        (when (and (numberp low)
-                   (numberp high)
-                   (>= low 0))
-          (let ((width (integer-length high)))
-            (multiple-value-bind (w kind signedp)
-                (best-modular-version width nil)
-              (when w
-                ;; FIXME: This should be (CUT-TO-WIDTH NODE KIND WIDTH SIGNEDP).
-                ;;
-                ;; FIXME: I think the FIXME (which is from APD) above
-                ;; implies that CUT-TO-WIDTH should do /everything/
-                ;; that's required, including reoptimizing things
-                ;; itself that it knows are necessary.  At the moment,
-                ;; CUT-TO-WIDTH sets up some new calls with
-                ;; combination-type :FULL, which later get noticed as
-                ;; known functions and properly converted.
-                ;;
-                ;; We cut to W not WIDTH if SIGNEDP is true, because
-                ;; signed constant replacement needs to know which bit
-                ;; in the field is the signed bit.
-                (let ((xact (cut-to-width x kind (if signedp w width) signedp))
-                      (yact (cut-to-width y kind (if signedp w width) signedp)))
-                  (declare (ignore xact yact))
-                  nil) ; After fixing above, replace with T, meaning
-                       ; "don't reoptimize this (LOGAND) node any more".
-                ))))))))
+    (multiple-value-bind (low high)
+        (integer-type-numeric-bounds result-type)
+      (when (and (numberp low)
+                 (numberp high)
+                 (>= low 0))
+        (let ((width (integer-length high)))
+          (multiple-value-bind (w kind signedp)
+              (best-modular-version width nil)
+            (when w
+              ;; FIXME: This should be (CUT-TO-WIDTH NODE KIND WIDTH SIGNEDP).
+              ;;
+              ;; FIXME: I think the FIXME (which is from APD) above
+              ;; implies that CUT-TO-WIDTH should do /everything/
+              ;; that's required, including reoptimizing things
+              ;; itself that it knows are necessary.  At the moment,
+              ;; CUT-TO-WIDTH sets up some new calls with
+              ;; combination-type :FULL, which later get noticed as
+              ;; known functions and properly converted.
+              ;;
+              ;; We cut to W not WIDTH if SIGNEDP is true, because
+              ;; signed constant replacement needs to know which bit
+              ;; in the field is the signed bit.
+              (let ((xact (cut-to-width x kind (if signedp w width) signedp))
+                    (yact (cut-to-width y kind (if signedp w width) signedp)))
+                (declare (ignore xact yact))
+                nil) ; After fixing above, replace with T, meaning
+                                        ; "don't reoptimize this (LOGAND) node any more".
+              )))))))
 
 (defoptimizer (mask-signed-field optimizer) ((width x) node)
   (let ((result-type (single-value-type (node-derived-type node))))
-    (when (numeric-type-p result-type)
-      (let ((low (numeric-type-low result-type))
-            (high (numeric-type-high result-type)))
-        (when (and (numberp low) (numberp high))
-          (let ((width (max (integer-length high) (integer-length low))))
-            (multiple-value-bind (w kind)
-                (best-modular-version (1+ width) t)
-              (when w
-                ;; FIXME: This should be (CUT-TO-WIDTH NODE KIND W T).
-                ;; [ see comment above in LOGAND optimizer ]
-                (cut-to-width x kind w t)
-                nil ; After fixing above, replace with T.
-                ))))))))
+    (multiple-value-bind (low high)
+        (integer-type-numeric-bounds result-type)
+      (when (and (numberp low) (numberp high))
+        (let ((width (max (integer-length high) (integer-length low))))
+          (multiple-value-bind (w kind)
+              (best-modular-version (1+ width) t)
+            (when w
+              ;; FIXME: This should be (CUT-TO-WIDTH NODE KIND W T).
+              ;; [ see comment above in LOGAND optimizer ]
+              (cut-to-width x kind w t)
+              nil                ; After fixing above, replace with T.
+              )))))))
+
+(defoptimizer (logior optimizer) ((x y) node)
+  (let ((result-type (single-value-type (node-derived-type node))))
+    (multiple-value-bind (low high)
+        (integer-type-numeric-bounds result-type)
+      (when (and (numberp low)
+                 (numberp high)
+                 (<= high 0))
+        (let ((width (integer-length low)))
+          (multiple-value-bind (w kind)
+              (best-modular-version (1+ width) t)
+            (when w
+              ;; FIXME: see comment in LOGAND optimizer
+              (let ((xact (cut-to-width x kind w t))
+                    (yact (cut-to-width y kind w t)))
+                (declare (ignore xact yact))
+                nil) ; After fixing above, replace with T
+              )))))))
 
 ;;; miscellanous numeric transforms
 
@@ -3333,14 +3443,17 @@
   (def logxor -1 (lognot x))
   (def logxor 0 x))
 
+(defun least-zero-bit (x)
+  (and (/= x -1)
+       (1- (integer-length (logxor x (1+ x))))))
+
 (deftransform logand ((x y) (* (constant-arg t)) *)
   "fold identity operation"
-  (let ((y (lvar-value y)))
-    (unless (and (plusp y)
-                 (= y (1- (ash 1 (integer-length y)))))
-      (give-up-ir1-transform))
-    (unless (csubtypep (lvar-type x)
-                       (specifier-type `(integer 0 ,y)))
+  (let* ((y (lvar-value y))
+         (width (or (least-zero-bit y) '*)))
+    (unless (and (neq width 0) ; (logand x 0) handled elsewhere
+                 (csubtypep (lvar-type x)
+                            (specifier-type `(unsigned-byte ,width))))
       (give-up-ir1-transform))
     'x))
 
@@ -3348,6 +3461,16 @@
   "fold identity operation"
   (let ((size (lvar-value size)))
     (unless (csubtypep (lvar-type x) (specifier-type `(signed-byte ,size)))
+      (give-up-ir1-transform))
+    'x))
+
+(deftransform logior ((x y) (* (constant-arg t)) *)
+  "fold identity operation"
+  (let* ((y (lvar-value y))
+         (width (or (least-zero-bit (lognot y))
+                    (give-up-ir1-transform)))) ; (logior x 0) handled elsewhere
+    (unless (csubtypep (lvar-type x)
+                       (specifier-type `(integer ,(- (ash 1 width)) -1)))
       (give-up-ir1-transform))
     'x))
 
@@ -3376,13 +3499,17 @@
                   (splice-fun-args x ',folded 2)
                   `(lambda (x y z)
                      (declare (ignore y z))
-                     (,',operator x ',(,folded y (lvar-value z))))))))
+                     ;; (operator (folded x y) z)
+                     ;; == (operator x (folded z y))
+                     (,',operator x ',(,folded (lvar-value z) y)))))))
   (def logand)
   (def logior)
   (def logxor)
   (def logtest :folded logand)
   (def + :type rational)
-  (def * :type rational))
+  (def + :type rational :folded -)
+  (def * :type rational)
+  (def * :type rational :folded /))
 
 (deftransform mask-signed-field ((width x) ((constant-arg unsigned-byte) *))
   "Fold mask-signed-field/mask-signed-field of constant width"
@@ -3937,6 +4064,48 @@
         `(values (the real ,arg0))
         `(let ((minrest (min ,@rest)))
           (if (<= ,arg0 minrest) ,arg0 minrest)))))
+
+;;; Simplify some cross-type comparisons
+(macrolet ((def (comparator round)
+             `(progn
+                (deftransform ,comparator
+                    ((x y) (rational (constant-arg float)))
+                  "open-code RATIONAL to FLOAT comparison"
+                  (let ((y (lvar-value y)))
+                    #-sb-xc-host
+                    (when (or (float-nan-p y)
+                              (float-infinity-p y))
+                      (give-up-ir1-transform))
+                    (setf y (rational y))
+                    `(,',comparator
+                      x ,(if (csubtypep (lvar-type x)
+                                        (specifier-type 'integer))
+                             (,round y)
+                             y))))
+                (deftransform ,comparator
+                    ((x y) (integer (constant-arg ratio)))
+                  "open-code INTEGER to RATIO comparison"
+                  `(,',comparator x ,(,round (lvar-value y)))))))
+  (def < ceiling)
+  (def > floor))
+
+(deftransform = ((x y) (rational (constant-arg float)))
+  "open-code RATIONAL to FLOAT comparison"
+  (let ((y (lvar-value y)))
+    #-sb-xc-host
+    (when (or (float-nan-p y)
+              (float-infinity-p y))
+      (give-up-ir1-transform))
+    (setf y (rational y))
+    (if (and (csubtypep (lvar-type x)
+                        (specifier-type 'integer))
+             (ratiop y))
+        nil
+        `(= x ,y))))
+
+(deftransform = ((x y) (integer (constant-arg ratio)))
+  "constant-fold INTEGER to RATIO comparison"
+  nil)
 
 ;;;; converting N-arg arithmetic functions
 ;;;;

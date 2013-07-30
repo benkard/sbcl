@@ -168,12 +168,12 @@ means to wait indefinitely.")
   (flet ((split-float ()
            (let ((whole-seconds (truly-the fixnum (%unary-truncate seconds))))
              (values whole-seconds
-                     (truly-the fixnum
+                     (truly-the (integer 0 #.(expt 10 9))
                                 (%unary-truncate (* (- seconds (float whole-seconds))
-                                                    (load-time-value 1s9 t))))))))
+                                                    (load-time-value 1f9 t))))))))
     (declare (inline split-float))
     (typecase seconds
-      ((single-float 0s0 #.(float most-positive-fixnum 1s0))
+      ((single-float 0f0 #.(float most-positive-fixnum 1f0))
        (split-float))
       ((double-float 0d0 #.(float most-positive-fixnum 1d0))
        (split-float))
@@ -189,7 +189,7 @@ means to wait indefinitely.")
       (t
        (multiple-value-bind (sec frac)
            (truncate seconds)
-         (values sec (truncate frac (load-time-value 1s-9 t))))))))
+         (values sec (truncate frac (load-time-value 1f-9 t))))))))
 
 (defun sleep (seconds)
   #!+sb-doc

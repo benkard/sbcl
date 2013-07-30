@@ -31,6 +31,7 @@
   #include <windows.h>
   #include <shlobj.h>
   #include <wincrypt.h>
+  #include <winsock2.h>
   #undef boolean
 #else
   #include <poll.h>
@@ -39,6 +40,7 @@
   #include <sys/wait.h>
   #include <sys/ioctl.h>
   #include <sys/termios.h>
+  #include <sys/time.h>
   #include <langinfo.h>
   #include <dlfcn.h>
 #endif
@@ -48,6 +50,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <time.h>
 
 #ifdef LISP_FEATURE_HPUX
 #include <sys/bsdtty.h> /* for TIOCGPGRP */
@@ -58,11 +61,25 @@
   #include <sys/sysctl.h>
 #endif
 
+#ifdef _WIN32
+  #include "pthreads_win32.h"
+#endif
+
 #include "wrap.h"
 #include "gc.h"
 
 #define DEFTYPE(lispname,cname) { cname foo; \
     printf("(define-alien-type " lispname " (%s %d))\n", (((foo=-1)<0) ? "sb!alien:signed" : "unsigned"), (8 * (sizeof foo))); }
+
+#define DEFSTRUCT(lispname,cname,body) { cname bar; \
+    printf("(define-alien-type nil\n  (struct %s", #lispname); \
+    body; \
+    printf("))\n"); }
+#define DEFSLOT(lispname,cname) \
+    printf("\n          (%s (%s %d))", \
+           #lispname, \
+           (((bar.cname=-1)<0) ? "sb!alien:signed" : "unsigned"), \
+           (8 * (sizeof bar.cname)))
 
 void
 defconstant(char* lisp_name, unsigned long unix_number)
@@ -499,6 +516,15 @@ main(int argc, char *argv[])
     defconstant("fpe-fltsub", -1);
 #endif
 #endif // !WIN32
+    printf("\n");
+
+    printf(";;; structures\n");
+    DEFSTRUCT(timeval, struct timeval,
+        DEFSLOT(tv-sec, tv_sec);
+        DEFSLOT(tv-usec, tv_usec));
+    DEFSTRUCT(timespec, struct timespec,
+        DEFSLOT(tv-sec, tv_sec);
+        DEFSLOT(tv-nsec, tv_nsec));
     printf("\n");
 
 #ifdef LISP_FEATURE_BSD

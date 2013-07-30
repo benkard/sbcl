@@ -595,20 +595,7 @@
   ;; the number of trailing arguments to VOP or %PRIMITIVE that we
   ;; bundle into a list and pass into the emit function. This provides
   ;; a way to pass uninterpreted stuff directly to the code generator.
-  (info-arg-count 0 :type index)
-  ;; a function that emits the VOPs for this template. Arguments:
-  ;;  1] Node for source context.
-  ;;  2] IR2-BLOCK that we place the VOP in.
-  ;;  3] This structure.
-  ;;  4] Head of argument TN-REF list.
-  ;;  5] Head of result TN-REF list.
-  ;;  6] If INFO-ARG-COUNT is non-zero, then a list of the magic
-  ;;     arguments.
-  ;;
-  ;; Two values are returned: the first and last VOP emitted. This vop
-  ;; sequence must be linked into the VOP Next/Prev chain for the
-  ;; block. At least one VOP is always emitted.
-  (emit-function (missing-arg) :type function))
+  (info-arg-count 0 :type index))
 (defprinter (template)
   name
   arg-types
@@ -695,7 +682,7 @@
   ;; counts as one, and all the more args/results together count as 1.
   (num-args 0 :type index)
   (num-results 0 :type index)
-  ;; a vector of the temporaries the vop needs. See EMIT-GENERIC-VOP
+  ;; a vector of the temporaries the vop needs. See EMIT-VOP
   ;; in vmdef for information on how the temps are encoded.
   (temps nil :type (or null (specializable-vector (unsigned-byte 16))))
   ;; the order all the refs for this vop should be put in. Each
@@ -765,6 +752,12 @@
 ;;; A FINITE-SB holds information needed by the packing algorithm for
 ;;; finite SBs.
 (def!struct (finite-sb (:include sb))
+  ;; the minimum number of location by which to grow this SB
+  ;; if it is :unbounded
+  (size-increment 1 :type index)
+  ;; current-size must always be a multiple of this. It is assumed
+  ;; to be a power of two.
+  (size-alignment 1 :type index)
   ;; the number of locations currently allocated in this SB
   (current-size 0 :type index)
   ;; the last location packed in, used by pack to scatter TNs to
@@ -855,6 +848,7 @@
   ;; true if this SC or one of its alternates in in the NUMBER-STACK SB.
   (number-stack-p nil :type boolean)
   ;; alignment restriction. The offset must be an even multiple of this.
+  ;; this must be a power of two.
   (alignment 1 :type (and index (integer 1)))
   ;; a list of locations that we avoid packing in during normal
   ;; register allocation to ensure that these locations will be free

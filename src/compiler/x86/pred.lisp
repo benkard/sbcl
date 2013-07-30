@@ -82,8 +82,7 @@
    the values, and VOP-name the name of the VOP that will be used
    to execute the conditional move.")
 
-(defun
-    convert-conditional-move-p (node dst-tn x-tn y-tn)
+(defun convert-conditional-move-p (node dst-tn x-tn y-tn)
   (declare (ignore node))
   (let* ((ptype (sb!c::tn-primitive-type dst-tn))
          (name  (sb!c::primitive-type-name ptype))
@@ -177,7 +176,7 @@
   (:info)
   (:policy :fast-safe)
   (:translate eq)
-  (:generator 8
+  (:generator 6
     (let ((x-val (encode-value-if-immediate x))
           (y-val (encode-value-if-immediate y)))
       (cond
@@ -190,14 +189,15 @@
 
         (t (inst cmp x y-val))))))
 
-(macrolet ((def (eq-name eql-name)
+(macrolet ((def (eq-name eql-name cost)
              `(define-vop (,eq-name ,eql-name)
-                (:translate eq))))
-  (def fast-if-eq-character fast-char=/character)
-  (def fast-if-eq-character/c fast-char=/character/c)
-  (def fast-if-eq-fixnum fast-eql/fixnum)
-  (def fast-if-eq-fixnum/c fast-eql-c/fixnum)
-  (def fast-if-eq/signed fast-if-eql/signed)
-  (def fast-if-eq-c/signed fast-if-eql-c/signed)
-  (def fast-if-eq/unsigned fast-if-eql/unsigned)
-  (def fast-if-eq-c/unsigned fast-if-eql-c/unsigned))
+                (:translate eq)
+                (:variant-cost ,cost))))
+  (def fast-if-eq-character fast-char=/character 3)
+  (def fast-if-eq-character/c fast-char=/character/c 2)
+  (def fast-if-eq-fixnum fast-eql/fixnum 3)
+  (def fast-if-eq-fixnum/c fast-eql-c/fixnum 2)
+  (def fast-if-eq-signed fast-if-eql/signed 5)
+  (def fast-if-eq-signed/c fast-if-eql-c/signed 4)
+  (def fast-if-eq-unsigned fast-if-eql/unsigned 5)
+  (def fast-if-eq-unsigned/c fast-if-eql-c/unsigned 4))
