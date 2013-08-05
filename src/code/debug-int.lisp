@@ -712,7 +712,9 @@
                ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
                ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
                (env-var (first (debug-fun-lambda-list debug-fun)))
-               (env (and env-var (access-compiled-debug-var-slot env-var frame)))
+               (env (and env-var
+                         (not (eq env-var :deleted))
+                         (access-compiled-debug-var-slot env-var frame)))
                #+(or)
                (context-var
                  (first (print (ambiguous-debug-vars debug-fun "CONTEXT"))))
