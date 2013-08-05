@@ -280,7 +280,7 @@
 
 #!+sb-eval
 (defun eval-in-lexenv (exp lexenv)
-  (ccase sb-ext:*evaluator-mode*
+  (ccase sb!ext:*evaluator-mode*
     #+(or)
     ((:interpret)
      (sb-impl::simple-eval-in-lexenv exp lexenv))
