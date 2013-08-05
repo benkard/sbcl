@@ -28,7 +28,7 @@
 (defstruct (environment (:constructor %make-environment))
   (context nil :type context)
   (parent nil :type (or null environment))
-  (data nil :type (or null simple-vector)))
+  (data nil :type simple-vector))
 
 (declaim (inline make-null-environment))
 (defun make-null-environment () (make-environment (make-null-context) nil 0))
@@ -38,9 +38,9 @@
                          parent
                          &optional (size 0)
                          &aux (data
-                               (unless (zerop (the fixnum size))
-                                 (make-array
-                                  (list size)))))
+                               (if (zerop (the fixnum size))
+                                   #()
+                                   (make-array (list size)))))
   (%make-environment :context context :parent parent :data data))
 
 (defmacro with-dynamic-extent-environment ((var context parent size) &body body)
