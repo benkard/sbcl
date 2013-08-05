@@ -26,27 +26,29 @@
 
 (declaim (inline %make-environment))
 (defstruct (environment (:constructor %make-environment))
+  (context nil :type context)
   (parent nil :type (or null environment))
   (data nil :type (or null simple-vector)))
 
 (declaim (inline make-null-environment))
-(defun make-null-environment () (make-environment nil 0))
+(defun make-null-environment () (make-environment (make-null-context) nil 0))
 
 (declaim (inline make-environment))
-(defun make-environment (parent
+(defun make-environment (context
+                         parent
                          &optional (size 0)
                          &aux (data
                                (unless (zerop (the fixnum size))
                                  (make-array
                                   (list size)))))
-  (%make-environment :parent parent :data data))
+  (%make-environment :context context :parent parent :data data))
 
-(defmacro with-dynamic-extent-environment ((var parent size) &body body)
+(defmacro with-dynamic-extent-environment ((var context parent size) &body body)
   (let ((data% (gensym))
         (size% (gensym)))
     `(let* ((,size% ,size)
             (,data% (make-array (list ,size%)))
-            (,var (%make-environment :parent ,parent :data ,data%)))
+            (,var (%make-environment :context ,context :parent ,parent :data ,data%)))
        (declare (type (mod #.(1+ +stack-max+)) ,size%)
                 ;; we must not allocate environment objects on the
                 ;; stack unless we can be sure that all child
@@ -728,12 +730,12 @@
                   (eval-lambda (env)
                     (lambda (&rest args)
                       (declare (dynamic-extent args))
-                      (let ((new-env (make-environment env varnum)))
+                      (let ((new-env (make-environment new-context env varnum)))
                         (apply #'handle-arguments new-env args))))
                   (eval-lambda (env)
                     (lambda (&rest args)
                       (declare (dynamic-extent args))
-                      (with-dynamic-extent-environment (new-env env varnum)
+                      (with-dynamic-extent-environment (new-env new-context env varnum)
                         (apply #'handle-arguments new-env args)))))))))))
 
 (defun context->native-environment (context)
@@ -920,7 +922,7 @@
                                              (context-add-specials new-context
                                                                    specials))))
                   (eval-lambda (env)
-                    (let ((new-env (make-environment env n)))
+                    (let ((new-env (make-environment new-context env n)))
                       (loop for i from 0 to n
                             for f in functions
                             do (setf (environment-value new-env 0 i)
@@ -941,7 +943,7 @@
                        (body* (prepare-progn body (context-add-specials new-context
                                                                         specials))))
                   (eval-lambda (env)
-                    (let ((new-env (make-environment env n)))
+                    (let ((new-env (make-environment new-context env n)))
                       (loop for i from 0 to n
                             for f in functions
                             do (setf (environment-value new-env 0 i)
@@ -979,7 +981,7 @@
                                                 specials))))
                     (if envp
                         (eval-lambda (env)
-                          (let ((new-env (make-environment env varnum))
+                          (let ((new-env (make-environment new-context env varnum))
                                 (slav-laiceps (list)))
                             (loop with i fixnum = 0
                                   for (specialp . val*) in values*
@@ -995,7 +997,7 @@
                                 slav-laiceps
                               (funcall body* new-env))))
                         (eval-lambda (env)
-                          (with-dynamic-extent-environment (new-env env varnum)
+                          (with-dynamic-extent-environment (new-env new-context env varnum)
                             (let ((slav-laiceps (list)))
                               (loop with i fixnum = 0
                                     for (specialp . val*) in values*
@@ -1083,7 +1085,7 @@
                                       specials))
                        (body*        (prepare-progn body new-context)))
                   (eval-lambda (env)
-                    (let* ((new-env (make-environment env nlexicals))
+                    (let* ((new-env (make-environment new-context env nlexicals))
                            (values  (multiple-value-list (funcall value-form* env))))
                       (progv our-specials '()
                         (loop with i = 0
