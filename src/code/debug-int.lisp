@@ -213,6 +213,15 @@
   (save-sc-offset nil :type (or sb!c:sc-offset null))
   (info nil))
 
+(defstruct (interpreted-debug-var
+            (:include debug-var)
+            (:constructor make-interpreted-debug-var
+                (symbol id level offset &aux (alive-p t)))
+            (:copier nil))
+  (level nil :type fixnum)
+  (offset nil :type fixnum)
+  (info nil))
+
 ;;;; frames
 
 ;;; These represent call frames on the stack.
@@ -680,8 +689,8 @@
       (make-interpreted-code-location
        debug-fun
        source-path
-       (sb-c::source-path-tlf-number source-path)
-       (sb-c::source-path-form-number source-path))
+       (sb!c::source-path-tlf-number source-path)
+       (sb!c::source-path-form-number source-path))
       (make-unknown-interpreted-code-location
        debug-fun)))
 
@@ -691,16 +700,16 @@
 (defun possibly-an-interpreted-frame (frame up-frame)
   (if (or (not frame)
           (not (eq (debug-fun-name (frame-debug-fun frame))
-                   'sb-eval2::eval-closure)))
+                   'sb!eval2::eval-closure)))
       frame
       (progn
         ;;(format t "~&; Caught an interpreted frame.")
         ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
         (let* ((debug-fun (frame-debug-fun frame))
                (closure (debug-fun-fun debug-fun))
-               (source-info (gethash closure sb-eval2::*source-info*))
-               (source-path (gethash closure sb-eval2::*source-paths*))
-               (source-loc  (gethash closure sb-eval2::*source-locations*))
+               ;;(source-info (gethash closure (symbol-value 'sb!eval2::*source-info*)))
+               (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
+               ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
                ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
                (env-var (first (debug-fun-lambda-list debug-fun)))
                (env (and env-var (access-compiled-debug-var-slot env-var frame)))
@@ -718,6 +727,7 @@
                                                     source-path)))
           #+(or)
           (progn
+            (print (frame-closure-vars frame))
             (print (frame-code-location frame))
             (print (compiled-frame-escaped  frame))
             (print (compiled-debug-fun-compiler-debug-fun debug-fun))
@@ -744,7 +754,7 @@
 ;;;
 ;;;
 (defun eval-closure-debug-info (closure)
-  (sb-c::make-debug-info
+  (sb!c::make-debug-info
    :name nil
    :source (eval-closure-debug-source closure)))
 
@@ -752,9 +762,9 @@
 ;;;
 ;;;
 (defun eval-closure-debug-source (closure)
-  (let ((source-loc (gethash closure sb-eval2::*source-locations*)))
-    (sb-c::make-debug-source
-     :namestring (and source-loc (sb-c::definition-source-location-namestring
+  (let ((source-loc (gethash closure (symbol-value 'sb!eval2::*source-locations*))))
+    (sb!c::make-debug-source
+     :namestring (and source-loc (sb!c::definition-source-location-namestring
                                   source-loc))
      :created nil
      :source-root 0
@@ -2633,6 +2643,7 @@ register."
   (compiled-debug-var-info debug-var))
 
 (defun interpreted-debug-var-validity (debug-var basic-code-location)
+  (declare (ignore debug-var basic-code-location))
   (error "NYI: INTERPRETED-DEBUG-VAR-VALIDITY"))
 
 ;;; This is the method for DEBUG-VAR-VALIDITY for COMPILED-DEBUG-VARs.
