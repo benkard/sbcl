@@ -1,13 +1,13 @@
 #+(or)
 (defpackage "SB-EVAL2"
   (:use "COMMON-LISP")
-  (:shadow "EVAL" "LOAD" "INSTALL")
-  (:export "EVAL" "LOAD" "INSTALL" "PREPARE-FORM" "MAKE-NULL-ENVIRONMENT" "MAKE-NULL-CONTEXT"))
+  (:shadow "INSTALL")
+  (:export "INSTALL" "PREPARE-FORM" "MAKE-NULL-ENVIRONMENT" "MAKE-NULL-CONTEXT"))
 
 (in-package "SB!EVAL2")
 
 ;;(declaim (optimize (debug 3) (space 0) (speed 0) (safety 3) (compilation-speed 0)))
-(declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
+(declaim (optimize (debug 3) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
 
 (defconstant +stack-max+ 8)
 
@@ -69,13 +69,13 @@
 (defun lexical-with-nesting (lexical nesting)
   (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
 
+#+(or)
 (defun maybe-references-p/env (form vars env)
   ;; Use `(function ,name) for local functions.
   ;;
   ;; FIXME: This doesn't do macro expansion, so it's probably
   ;; incorrect.
   (let ((sb!walker::*walk-form-expand-macros-p* t))
-    (declare (special sb!walker::*walk-form-expand-macros-p*))
     (sb!walker:walk-form
      form
      env
@@ -93,6 +93,7 @@
       (maybe-closes-over-p/env form vars (context->native-environment context))
     (serious-condition () t)))
 
+#+(or)
 (defun maybe-closes-over-p/env (form vars env)
   (let ((sb!walker::*walk-form-expand-macros-p* t))
     (sb!walker:walk-form
@@ -133,9 +134,7 @@
   (make-context nil))
 (defun context-add-block-tag (context block tag)
   (let ((new-context (make-context context)))
-    (with-slots (block-tags)
-        new-context
-      (setq block-tags (acons block tag block-tags)))
+    (push (cons block tag) (context-block-tags new-context))
     new-context))
 (defun context-block-tag (context block)
   (let ((parent (context-parent context)))
@@ -143,10 +142,9 @@
         (and parent (context-block-tag parent block)))))
 (defun context-add-go-tags (context new-go-tags catch-tag)
   (let ((new-context (make-context context)))
-    (with-slots (go-tags)
-        new-context
-      (dolist (new-go-tag new-go-tags)
-        (setq go-tags (acons new-go-tag catch-tag go-tags))))
+    (dolist (new-go-tag new-go-tags)
+      (push (cons new-go-tag catch-tag)
+            (context-go-tags new-context)))
     new-context))
 (defun context-collect (context f)
   (let ((parent (context-parent context)))
@@ -176,15 +174,13 @@
              (and parent (context-find-macro parent mac))))))
 (defun context-add-symbol-macros (context bindings)
   (let ((new-context (make-context context)))
-    (with-slots (symbol-macros)
-        new-context
-      (setq symbol-macros (append bindings symbol-macros)))
+    (setf (context-symbol-macros context)
+          (append bindings (context-symbol-macros context)))
     new-context))
 (defun context-add-macros (context bindings)
   (let ((new-context (make-context context)))
-    (with-slots (macros)
-        new-context
-      (setq macros (append bindings macros)))
+    (setf (context-macros context)
+          (append bindings (context-macros context)))
     new-context))
 (defun parse-tagbody-tags-and-bodies (forms)
   (let ((next-form (gensym))
@@ -221,30 +217,26 @@
 (defun context-add-env-lexicals (context vars)
   ;; open a new variable context
   (let ((new-context (make-context context)))
-    (with-slots (lexicals env-hop)
-        new-context
-      (setq env-hop t)
-      (setq lexicals (loop for i fixnum from 0
-                           for v in vars
-                           collect (make-env-lexical v i))))
+    (setf (context-env-hop context) t)
+    (setf (context-lexicals context)
+          (loop for i fixnum from 0
+                for v in vars
+                collect (make-env-lexical v i)))
     new-context))
 (defun make-lexical-context (context)
   (let ((new-context (make-context context)))
     (setf (context-env-hop new-context) t)
     new-context))
 (defun context-add-env-lexical! (context var)
-  (with-slots (lexicals)
-      context
-    (push (make-env-lexical var (length lexicals)) lexicals))
+  (push (make-env-lexical var (length (context-lexicals context)))
+        (context-lexicals context))
   (values))
 (defun context-add-specials (context vars)
   (let ((new-context (make-context context)))
     (setf (context-specials new-context) vars)
     new-context))
 (defun context-add-special! (context var)
-  (with-slots (specials)
-      context
-    (push var specials))
+  (push var (context-specials context))
   (values))
 (defun context-add-env-functions (context fs)
   (context-add-env-lexicals context (mapcar (lambda (x) `(function ,x)) fs)))
@@ -748,23 +740,18 @@
     (sb!c::internal-make-lexenv functions vars nil nil nil nil nil nil nil nil nil)))
 
 (defun native-environment->context (lexenv)
-  (with-accessors ((functions sb!c::lexenv-funs)
-                   (vars      sb!c::lexenv-vars))
-      lexenv
-    (let ((context (make-context nil))
-          (macros%
-            (loop for (name . functional) in vars
-                  when (eq (car functional) 'sb!c::macro)
-                  collect `(,name . ,(cdr functional))))
-          (symbol-macros%
-            (loop for (name . form) in functions
-                  when (eq (car form) 'sb!c::macro)
-                  collect `(,name . ,(cdr form)))))
-      (with-slots (macros symbol-macros)
-          context
-        (setq macros macros%)
-        (setq symbol-macros symbol-macros%))
-      context)))
+  (let ((context (make-context nil))
+        (macros%
+          (loop for (name . functional) in (sb!c::lexenv-vars lexenv)
+                when (eq (car functional) 'sb!c::macro)
+                collect `(,name . ,(cdr functional))))
+        (symbol-macros%
+          (loop for (name . form) in (sb!c::lexenv-funs lexenv)
+                when (eq (car form) 'sb!c::macro)
+                collect `(,name . ,(cdr form)))))
+    (setf (context-macros context) macros%)
+    (setf (context-symbol-macros context) symbol-macros%)
+    context))
 
 (defun globally-special-p (var)
   (eq :special (sb!int:info :variable :kind var)))
@@ -1229,14 +1216,17 @@
                    (prepare-global-call f args context)))))))))))
    t))
 
+#+(or)
 (defun eval (form)
   (funcall (prepare-form form (make-null-context) :execute)
            (make-null-environment)))
 
+#+(or)
 (defun eval-tlf (form)
   (funcall (prepare-form form (make-null-context) :not-compile-time)
            (make-null-environment)))
 
+#+(or)
 (defun load (filename)
   ;;FIXME: set :LOAD-TOPLEVEL time.
   (let ((eof (gensym)))
