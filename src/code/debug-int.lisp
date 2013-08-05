@@ -2663,6 +2663,14 @@ register."
                             pos))
                :invalid
                :valid)))))
+
+(defun frame-closure-vars (frame)
+  (let* ((debug-fun (frame-debug-fun frame))
+         (compiler-debug-fun (compiled-debug-fun-compiler-debug-fun debug-fun))
+         (closure-save-offset (sb!c::compiled-debug-fun-closure-save compiler-debug-fun)))
+    (when closure-save-offset
+      (sub-access-debug-var-slot (frame-pointer frame) closure-save-offset))))
+
 
 ;;;; sources
 
