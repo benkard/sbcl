@@ -2898,6 +2898,15 @@ structure representations"
                "EVAL-IN-NATIVE-ENVIRONMENT"
                "PREPARE-FOR-COMPILE"
                "*EVAL-LEVEL*"))
+   #!+sb-eval
+   #s(sb-cold:package-data
+      :name "SB!EVAL2"
+      :doc "internal: the evaluator implementation used to execute code without compiling it."
+      :use ("CL")
+      :export ("PREPARE-FORM"
+               "MAKE-NULL-ENVIRONMENT"
+               "MAKE-NULL-CONTEXT"
+               "NATIVE-ENVIRONMENT->CONTEXT"))
 
    #!+win32
    #s(sb-cold:package-data

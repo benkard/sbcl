@@ -721,7 +721,7 @@
  ("src/code/parse-defmacro-errors")
 
  #!+sb-eval
- ("src/code/full-eval"   :not-host) ; uses INFO, ARG-COUNT-ERROR
+ ("src/code/eval2"       :not-host) ; uses INFO, ARG-COUNT-ERROR
 
  ("src/code/bit-bash"    :not-host) ; needs %NEGATE from assembly/target/arith
 

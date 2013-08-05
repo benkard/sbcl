@@ -278,13 +278,25 @@
           (t
            exp))))))
 
+#!+sb-eval
 (defun eval-in-lexenv (exp lexenv)
-  #!+sb-eval
-  (if (eq *evaluator-mode* :compile)
-      (simple-eval-in-lexenv exp lexenv)
-      (sb!eval:eval-in-native-environment exp lexenv))
-  #!-sb-eval
-  (simple-eval-in-lexenv exp lexenv))
+  (ccase sb-ext:*evaluator-mode*
+    #+(or)
+    ((:interpret)
+     (sb-impl::simple-eval-in-lexenv exp lexenv))
+    ((:interpret)
+     (funcall (sb!eval2:prepare-form exp
+                                     (sb!eval2:native-environment->context lexenv)
+                                     (if sb!impl::*eval-tlf-index*
+                                         :not-compile-time
+                                         :execute))
+              (sb!eval2:make-null-environment)))
+    ((:compile)
+     (sb!eval:eval-in-native-environment exp lexenv))))
+
+#!-sb-eval
+(defun eval-in-lexenv (exp lexenv)
+  (sb-eval:eval-in-native-environment exp lexenv))
 
 (defun eval (original-exp)
   #!+sb-doc
