@@ -706,7 +706,9 @@
         ;;(format t "~&; Caught an interpreted frame.")
         ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
         (let* ((debug-fun (frame-debug-fun frame))
-               (closure (debug-fun-fun debug-fun))
+               (closure (let ((closure? (frame-closure-vars frame)))
+                          (when (functionp closure?)
+                            closure?)))
                ;;(source-info (gethash closure (symbol-value 'sb!eval2::*source-info*)))
                (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
                ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
@@ -714,7 +716,8 @@
                (env-var (first (debug-fun-lambda-list debug-fun)))
                (env (and env-var
                          (not (eq env-var :deleted))
-                         (access-compiled-debug-var-slot env-var frame)))
+                         (ignore-errors
+                           (access-compiled-debug-var-slot env-var frame))))
                #+(or)
                (context-var
                  (first (print (ambiguous-debug-vars debug-fun "CONTEXT"))))
