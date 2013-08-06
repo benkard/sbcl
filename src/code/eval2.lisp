@@ -41,7 +41,8 @@
   (data nil :type simple-vector))
 
 (declaim (inline make-null-environment))
-(defun make-null-environment () (make-environment (make-null-context) nil 0))
+(defun make-null-environment ()
+  (make-environment (make-debug-record (make-null-context)) nil 0))
 
 (declaim (inline make-environment))
 (defun make-environment (debug-record
