@@ -25,6 +25,8 @@
              collect
                 `((,x) ,(cl:eval `(let ((,var ,x)) ,@body))))))
 
+(deftype eval-closure () `(function (environment) *))
+
 (defstruct (debug-record (:constructor
                              make-debug-record
                              (context &optional lambda-list function-name)))
@@ -34,9 +36,9 @@
 
 (declaim (inline %make-environment))
 (defstruct (environment (:constructor %make-environment))
+  (debug-record nil :type debug-record)
   (parent nil :type (or null environment))
-  (data nil :type simple-vector)
-  (debug-record nil :type debug-record))
+  (data nil :type simple-vector))
 
 (declaim (inline make-null-environment))
 (defun make-null-environment () (make-environment (make-null-context) nil 0))
@@ -261,8 +263,6 @@
         when (context-env-hop context)
           do (incf env-level)
         do (setq context (context-parent context))))
-
-(deftype eval-closure () `(function (environment) *))
 
 (declaim (inline environment-value))
 (defun environment-value (env nesting offset)

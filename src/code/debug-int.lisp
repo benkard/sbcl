@@ -695,6 +695,31 @@
        debug-fun)))
 
 
+;;
+;;
+(defun compute-interpreted-debug-vars (env)
+  (let ((debug-info (and env (sb!eval2::environment-debug-record env))))
+    (when debug-info
+      (let* ((context (and debug-info (sb!eval2::debug-record-context debug-info)))
+             (vars    (mapcar #'sb!eval2::lexical-name (sb!eval2::context-lexicals context))))
+        (flet ((make-debug-var (var)
+                 (let ((lexical
+                         (sb!eval2::context-find-lexical context var)))
+                   (make-interpreted-debug-var
+                    var
+                    0
+                    (sb!eval2::lexical-nesting lexical)
+                    (sb!eval2::lexical-offset lexical)))))
+          (mapcar #'make-debug-var vars))))))
+
+
+(defun interpreter-frame-environment (frame)
+  (let ((env-var (first (debug-fun-lambda-list debug-fun))))
+    (and env-var
+         (not (eq env-var :deleted))
+         (ignore-errors
+          (access-compiled-debug-var-slot env-var frame)))))
+
 ;;;
 ;;;
 (defun possibly-an-interpreted-frame (frame up-frame)
@@ -703,6 +728,7 @@
                    'sb!eval2::eval-closure)))
       frame
       (progn
+        ;;FIXME: Handle (LABELS SB-EVAL2::ITER :IN SB-EVAL2::PREPARE-LAMBDA)
         ;;(format t "~&; Caught an interpreted frame.")
         ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
         (let* ((debug-fun (frame-debug-fun frame))
@@ -713,25 +739,28 @@
                (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
                ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
                ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
-               (env-var (first (debug-fun-lambda-list debug-fun)))
-               (env (and env-var
-                         (not (eq env-var :deleted))
-                         (ignore-errors
-                           (access-compiled-debug-var-slot env-var frame))))
+               (env (interpreter-frame-environment frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))
-               (context (and debug-info (sb!eval2::debug-record-context debug-info)))
                (interpreted-debug-fun
                  (make-interpreted-debug-fun
-                  :%lambda-list (list) ;FIXME
-                  :%debug-vars (list)  ;FIXME
-                  :%function closure
-                  :%name nil))         ;FIXME
+                        :%lambda-list (and debug-info (sb!eval2::debug-record-lambda-list debug-info))
+                        :%debug-vars (compute-interpreted-debug-vars env)
+                        :%function closure
+                        :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
                (code-location
                  (compute-interpreted-code-location interpreted-debug-fun
                                                     source-path)))
+          ;;(print source-path)
+          ;;(print closure)
+          ;;(print (frame-closure-vars frame))
+          ;;(setf (debug-fun-%function interpreted-debug-fun) closure)
+          #+(or)
+          (when closure
+            (print closure)
+            (print source-info)
+            (print source-path))
           #+(or)
           (progn
-            (print (frame-closure-vars frame))
             (print (frame-code-location frame))
             (print (compiled-frame-escaped  frame))
             (print (compiled-debug-fun-compiler-debug-fun debug-fun))
@@ -2191,6 +2220,16 @@ register."
 ;;; Returns the value stored for DEBUG-VAR in frame. The value may be
 ;;; invalid. This is SETFable.
 (defun debug-var-value (debug-var frame)
+  (etypecase debug-var
+    (compiled-debug-var (compiled-debug-var-value debug-var frame))
+    (interpreted-debug-var (interpreted-debug-var-value debug-var frame))))
+
+(defun interpreted-debug-var-value (debug-var frame)
+  (sb!eval2::environment-value (interpreter-frame-environment frame)
+                               (interpreted-debug-var-level debug-var)
+                               (interpreted-debug-var-offset debug-var)))
+
+(defun compiled-debug-var-value (debug-var frame)
   (aver (typep frame 'compiled-frame))
   (let ((res (access-compiled-debug-var-slot debug-var frame)))
     (if (indirect-value-cell-p res)
@@ -2647,11 +2686,18 @@ register."
      (interpreted-debug-var-validity debug-var basic-code-location))))
 
 (defun debug-var-info (debug-var)
-  (compiled-debug-var-info debug-var))
+  (etypecase debug-var
+    (compiled-debug-var
+     (compiled-debug-var-info debug-var))
+    (interpreted-debug-var
+     (interpreted-debug-var-info debug-var))))
+
+(defun interpreted-debug-var-info (debug-var)
+  )
 
 (defun interpreted-debug-var-validity (debug-var basic-code-location)
   (declare (ignore debug-var basic-code-location))
-  (error "NYI: INTERPRETED-DEBUG-VAR-VALIDITY"))
+  :valid)
 
 ;;; This is the method for DEBUG-VAR-VALIDITY for COMPILED-DEBUG-VARs.
 ;;; For safety, make sure basic-code-location is what we think.
