@@ -721,6 +721,8 @@
                #+(or)
                (context-var
                  (first (print (ambiguous-debug-vars debug-fun "CONTEXT"))))
+               (context (and env
+                             (sb!eval2::environment-context env)))
                (interpreted-debug-fun
                  (make-interpreted-debug-fun
                   :%lambda-list (list) ;FIXME
@@ -740,7 +742,9 @@
             (print (debug-fun-fun debug-fun))
             (print (debug-fun-debug-vars debug-fun))
             (print (debug-fun-debug-blocks debug-fun)))
-          (assert closure)
+          #+(or)
+          (force-output)
+          ;;(assert closure)
           (setf (debug-fun-blocks interpreted-debug-fun)
                 (vector (make-interpreted-debug-block
                          :code-locations (vector code-location)
@@ -769,8 +773,9 @@
 (defun eval-closure-debug-source (closure)
   (let ((source-loc (gethash closure (symbol-value 'sb!eval2::*source-locations*))))
     (sb!c::make-debug-source
-     :namestring (and source-loc (sb!c::definition-source-location-namestring
-                                  source-loc))
+     :namestring (and source-loc
+                      (sb!c::definition-source-location-namestring
+                       source-loc))
      :created nil
      :source-root 0
      :start-positions nil
