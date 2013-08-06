@@ -584,7 +584,7 @@
                          (some (lambda (x) (maybe-closes-over-p context x argvars))
                                default-values)))
                (body-context (context-add-specials new-context specials))
-               (debug-info (make-debug-record body-context lambda-list name))
+               (debug-info (make-debug-record body-context (list lambda-list) name))
                (body* (prepare-form
                        (if namep
                            `(block ,(sb!int:fun-name-block-name name) ,@body)

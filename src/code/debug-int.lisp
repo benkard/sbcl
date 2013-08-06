@@ -725,68 +725,79 @@
 ;;;
 ;;;
 (defun possibly-an-interpreted-frame (frame up-frame)
-  (if (or (not frame)
-          (not (eq (debug-fun-name (frame-debug-fun frame))
-                   'sb!eval2::eval-closure)))
-      frame
-      (progn
-        ;;FIXME: Handle (LABELS SB-EVAL2::ITER :IN SB-EVAL2::PREPARE-LAMBDA)
-        ;;(format t "~&; Caught an interpreted frame.")
-        ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
-        (let* ((debug-fun (frame-debug-fun frame))
-               (closure (let ((closure? (frame-closure-vars frame)))
-                          (when (functionp closure?)
-                            closure?)))
-               ;;(source-info (gethash closure (symbol-value 'sb!eval2::*source-info*)))
-               (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
-               ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
-               ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
-               (env (interpreter-frame-environment frame))
-               (debug-info (and env (sb!eval2::environment-debug-record env)))
-               (interpreted-debug-fun
-                 (make-interpreted-debug-fun
-                        :%lambda-list (and debug-info (sb!eval2::debug-record-lambda-list debug-info))
-                        :%debug-vars (compute-interpreted-debug-vars env)
-                        :%function closure
-                        :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
-               (code-location
-                 (compute-interpreted-code-location interpreted-debug-fun
-                                                    source-path)))
-          ;;(print source-path)
-          ;;(print closure)
-          ;;(print (frame-closure-vars frame))
-          ;;(setf (debug-fun-%function interpreted-debug-fun) closure)
-          #+(or)
-          (when closure
-            (print closure)
-            (print source-info)
-            (print source-path))
-          #+(or)
-          (progn
-            (print (frame-code-location frame))
-            (print (compiled-frame-escaped  frame))
-            (print (compiled-debug-fun-compiler-debug-fun debug-fun))
-            (print (debug-fun-lambda-list debug-fun))
-            (print (debug-fun-fun debug-fun))
-            (print (debug-fun-debug-vars debug-fun))
-            (print (debug-fun-debug-blocks debug-fun)))
-          #+(or)
-          (force-output)
-          ;;(assert closure)
-          (setf (debug-fun-blocks interpreted-debug-fun)
-                (vector (make-interpreted-debug-block
-                         :code-locations (vector code-location)
-                         :debug-fun debug-fun
-                         :source-path source-path)))
-          (let ((interpreted-frame
-                  (make-interpreted-frame
-                   up-frame
-                   interpreted-debug-fun
-                   code-location
-                   (frame-number frame)
-                   frame
-                   env)))
-            interpreted-frame)))))
+  (when (null frame)
+    (return-from possibly-an-interpreted-frame
+      nil))
+  (when (or (equal (debug-fun-name (frame-debug-fun frame))
+                   '(labels sb!eval2::iter :in sb!eval2::prepare-lambda))
+            (equal (debug-fun-name (frame-debug-fun frame))
+                   '(flet sb!eval2::handle-arguments :in sb!eval2::prepare-lambda)))
+    (return-from possibly-an-interpreted-frame
+      (frame-down frame)))
+  (unless (eq (debug-fun-name (frame-debug-fun frame))
+              'sb!eval2::eval-closure)
+    (return-from possibly-an-interpreted-frame
+      frame))
+  ;;(format t "~&; Caught an interpreted frame.")
+  ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
+  (let* ((debug-fun (frame-debug-fun frame))
+         (closure (let ((closure? (frame-closure-vars frame)))
+                    (when (functionp closure?)
+                      closure?)))
+         ;;(source-info (gethash closure (symbol-value 'sb!eval2::*source-info*)))
+         (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
+         ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
+         ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
+         (env (interpreter-frame-environment frame))
+         (debug-info (and env (sb!eval2::environment-debug-record env)))
+         (interpreted-debug-fun
+           (make-interpreted-debug-fun
+            :%lambda-list (and debug-info
+                               (sb!eval2::debug-record-lambda-list debug-info))
+            :%debug-vars (compute-interpreted-debug-vars env)
+            :%function closure
+            :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
+         (code-location
+           (compute-interpreted-code-location interpreted-debug-fun
+                                              source-path)))
+    ;;(print source-path)
+    ;;(print closure)
+    ;;(print (frame-closure-vars frame))
+    ;;(setf (debug-fun-%function interpreted-debug-fun) closure)
+    #+(or)
+    (when closure
+      (print closure)
+      (print source-info)
+      (print source-path))
+    #+(or)
+    (progn
+      (print (frame-code-location frame))
+      (print (compiled-frame-escaped  frame))
+      (print (compiled-debug-fun-compiler-debug-fun debug-fun))
+      (print (debug-fun-lambda-list debug-fun))
+      (print (debug-fun-fun debug-fun))
+      (print (debug-fun-debug-vars debug-fun))
+      (print (debug-fun-debug-blocks debug-fun)))
+    #+(or)
+    (force-output)
+    ;;(assert closure)
+    (setf (debug-fun-blocks interpreted-debug-fun)
+          (vector (make-interpreted-debug-block
+                   :code-locations (vector code-location)
+                   :debug-fun debug-fun
+                   :source-path source-path)))
+    (if (and debug-info
+             (sb!eval2::debug-record-lambda-list debug-info))
+        (let ((interpreted-frame
+                (make-interpreted-frame
+                 up-frame
+                 interpreted-debug-fun
+                 code-location
+                 (frame-number frame)
+                 frame
+                 env)))
+          interpreted-frame)
+        (frame-down frame))))
 
 ;;;
 ;;;
@@ -1581,7 +1592,10 @@ register."
   ;; (function name + arguments).
   ;;
   ;;FIXME
-  (debug-fun-%lambda-list debug-fun))
+  (let ((lambda-list-cons (debug-fun-%lambda-list debug-fun)))
+   (if lambda-list-cons
+       (car lambda-list-cons)
+       (signal 'lambda-list-unavailable))))
 
 ;;; Note: If this has to compute the lambda list, it caches it in DEBUG-FUN.
 (defun compiled-debug-fun-lambda-list (debug-fun)
