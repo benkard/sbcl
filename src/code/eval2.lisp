@@ -34,9 +34,9 @@
 
 (declaim (inline %make-environment))
 (defstruct (environment (:constructor %make-environment))
-  (debug-record nil :type debug-record)
   (parent nil :type (or null environment))
-  (data nil :type simple-vector))
+  (data nil :type simple-vector)
+  (debug-record nil :type debug-record))
 
 (declaim (inline make-null-environment))
 (defun make-null-environment () (make-environment (make-null-context) nil 0))
@@ -787,7 +787,8 @@
                                   &aux (*mode* :execute)
                                        (*form* form)
                                        (sb!c::*current-path*
-                                        (when (boundp 'sb!c::*source-paths*)
+                                        (when (and (boundp 'sb!c::*source-paths*)
+                                                   (boundp 'sb!c::*current-path*))
                                           (sb!c::ensure-source-path form))))
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
   ;;(print form)
