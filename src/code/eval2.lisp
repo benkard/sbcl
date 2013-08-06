@@ -291,24 +291,27 @@
   (setf (gethash eval-closure *source-locations*) val))
 
 
-(defun annotate-lambda-with-source (closure tag)
+(defun annotate-lambda-with-source (closure)
   (when (and (boundp 'sb!c::*current-path*)
              (boundp 'sb!c::*source-info*))
-    (setf (source-path tag) sb!c::*current-path*)
-    (setf (source-info tag) sb!c::*source-info*)
-    (setf (source-location tag) (sb!c::make-definition-source-location)))
+    ;;(print sb!c::*current-path*)
+    ;;(print sb!c::*source-info*)
+    (setf (source-path closure) sb!c::*current-path*)
+    (setf (source-info closure) sb!c::*source-info*)
+    ;;(assert (typep (sb!c::source-path-tlf-number sb!c::*current-path*) '(or fixnum null)))
+    #+(or)
+    (typecase (sb!c::source-path-tlf-number sb!c::*current-path*)
+      (cons (print (first (last sb!c::*current-path*)))))
+    ;;(print sb!c::*source-namestring*)
+    #+(or)
+    (setf (source-location closure) (sb!c::make-definition-source-location
+                                     )))
   closure)
 
 (defmacro eval-lambda (lambda-list &body body)
-  (let ((gtag (gensym)))
-    `(let ((,gtag (gensym)))
-       (annotate-lambda-with-source
-        (let ((%%%eval-closure-tag ,gtag))
-          (declare (ignorable %%%eval-closure-tag))
-          (assert (symbolp %%%eval-closure-tag))
-          (sb!int:named-lambda eval-closure
-            ,lambda-list ,@body))
-        ,gtag))))
+  `(annotate-lambda-with-source
+    (sb!int:named-lambda eval-closure
+      ,lambda-list ,@body)))
 
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
