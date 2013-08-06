@@ -714,7 +714,8 @@
 
 
 (defun interpreter-frame-environment (frame)
-  (let ((env-var (first (debug-fun-lambda-list debug-fun))))
+  (let* ((debug-fun (frame-debug-fun frame))
+         (env-var (first (debug-fun-lambda-list debug-fun))))
     (and env-var
          (not (eq env-var :deleted))
          (ignore-errors
@@ -2225,7 +2226,7 @@ register."
     (interpreted-debug-var (interpreted-debug-var-value debug-var frame))))
 
 (defun interpreted-debug-var-value (debug-var frame)
-  (sb!eval2::environment-value (interpreter-frame-environment frame)
+  (sb!eval2::environment-value (interpreted-frame-env frame)
                                (interpreted-debug-var-level debug-var)
                                (interpreted-debug-var-offset debug-var)))
 
@@ -2691,9 +2692,6 @@ register."
      (compiled-debug-var-info debug-var))
     (interpreted-debug-var
      (interpreted-debug-var-info debug-var))))
-
-(defun interpreted-debug-var-info (debug-var)
-  )
 
 (defun interpreted-debug-var-validity (debug-var basic-code-location)
   (declare (ignore debug-var basic-code-location))
