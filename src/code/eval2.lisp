@@ -25,9 +25,16 @@
              collect
                 `((,x) ,(cl:eval `(let ((,var ,x)) ,@body))))))
 
+(defstruct (debug-record (:constructor
+                             make-debug-record
+                             (context &optional lambda-list function-name)))
+  (context nil :type context)
+  (lambda-list nil :type list)
+  (function-name nil))
+
 (declaim (inline %make-environment))
 (defstruct (environment (:constructor %make-environment))
-  (context nil :type context)
+  (debug-record nil :type debug-record)
   (parent nil :type (or null environment))
   (data nil :type simple-vector))
 
@@ -35,21 +42,21 @@
 (defun make-null-environment () (make-environment (make-null-context) nil 0))
 
 (declaim (inline make-environment))
-(defun make-environment (context
+(defun make-environment (debug-record
                          parent
                          &optional (size 0)
                          &aux (data
                                (if (zerop (the fixnum size))
                                    #()
                                    (make-array (list size)))))
-  (%make-environment :context context :parent parent :data data))
+  (%make-environment :debug-record debug-record :parent parent :data data))
 
-(defmacro with-dynamic-extent-environment ((var context parent size) &body body)
+(defmacro with-dynamic-extent-environment ((var debug-record parent size) &body body)
   (let ((data% (gensym))
         (size% (gensym)))
     `(let* ((,size% ,size)
             (,data% (make-array (list ,size%)))
-            (,var (%make-environment :context ,context :parent ,parent :data ,data%)))
+            (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
        (declare (type (mod #.(1+ +stack-max+)) ,size%)
                 ;; we must not allocate environment objects on the
                 ;; stack unless we can be sure that all child
@@ -573,6 +580,7 @@
                          (some (lambda (x) (maybe-closes-over-p context x argvars))
                                default-values)))
                (body-context (context-add-specials new-context specials))
+               (debug-info (make-debug-record body-context lambda-list name))
                (body* (prepare-form
                        (if namep
                            `(block ,(sb!int:fun-name-block-name name) ,@body)
@@ -723,12 +731,12 @@
                   (eval-lambda (env)
                     (lambda (&rest args)
                       (declare (dynamic-extent args))
-                      (let ((new-env (make-environment body-context env varnum)))
+                      (let ((new-env (make-environment debug-info env varnum)))
                         (apply #'handle-arguments new-env args))))
                   (eval-lambda (env)
                     (lambda (&rest args)
                       (declare (dynamic-extent args))
-                      (with-dynamic-extent-environment (new-env body-context env varnum)
+                      (with-dynamic-extent-environment (new-env debug-info env varnum)
                         (apply #'handle-arguments new-env args)))))))))))
 
 (defun context->native-environment (context)
@@ -904,13 +912,15 @@
                                           bindings))
                        (new-context
                          (context-add-env-functions context (mapcar #'first bindings*)))
+                       (debug-info
+                         (make-debug-record new-context))
                        (functions (mapcar #'cdr bindings*))
                        (n (length functions))
                        (body* (prepare-progn body
                                              (context-add-specials new-context
                                                                    specials))))
                   (eval-lambda (env)
-                    (let ((new-env (make-environment new-context env n)))
+                    (let ((new-env (make-environment debug-info env n)))
                       (loop for i from 0 to n
                             for f in functions
                             do (setf (environment-value new-env 0 i)
@@ -920,6 +930,8 @@
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
                 (let* ((new-context (context-add-env-functions context (mapcar #'first bindings)))
+                       (debug-info
+                         (make-debug-record new-context))
                        (bindings* (mapcar (lambda (form)
                                             (if (listp form)
                                                 (cons (first form)
@@ -931,7 +943,7 @@
                        (body* (prepare-progn body (context-add-specials new-context
                                                                         specials))))
                   (eval-lambda (env)
-                    (let ((new-env (make-environment new-context env n)))
+                    (let ((new-env (make-environment debug-info env n)))
                       (loop for i from 0 to n
                             for f in functions
                             do (setf (environment-value new-env 0 i)
@@ -951,6 +963,8 @@
                                  (maybe-closes-over-p context `(progn ,@body) vars)))
                        (new-context
                          (context-add-env-lexicals context (list)))
+                       (debug-info
+                         (make-debug-record new-context))
                        srav-laiceps)
                   (let* ((values*
                            (loop for (var . value-form) in real-bindings
@@ -969,7 +983,7 @@
                                                 specials))))
                     (if envp
                         (eval-lambda (env)
-                          (let ((new-env (make-environment new-context env varnum))
+                          (let ((new-env (make-environment debug-info env varnum))
                                 (slav-laiceps (list)))
                             (loop with i fixnum = 0
                                   for (specialp . val*) in values*
@@ -985,7 +999,7 @@
                                 slav-laiceps
                               (funcall body* new-env))))
                         (eval-lambda (env)
-                          (with-dynamic-extent-environment (new-env new-context env varnum)
+                          (with-dynamic-extent-environment (new-env debug-info env varnum)
                             (let ((slav-laiceps (list)))
                               (loop with i fixnum = 0
                                     for (specialp . val*) in values*
@@ -1071,9 +1085,10 @@
                        (new-context  (context-add-specials
                                       (context-add-env-lexicals context lexicals)
                                       specials))
+                       (debug-info   (make-debug-record new-context))
                        (body*        (prepare-progn body new-context)))
                   (eval-lambda (env)
-                    (let* ((new-env (make-environment new-context env nlexicals))
+                    (let* ((new-env (make-environment debug-info env nlexicals))
                            (values  (multiple-value-list (funcall value-form* env))))
                       (progv our-specials '()
                         (loop with i = 0

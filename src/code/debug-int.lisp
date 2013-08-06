@@ -718,11 +718,8 @@
                          (not (eq env-var :deleted))
                          (ignore-errors
                            (access-compiled-debug-var-slot env-var frame))))
-               #+(or)
-               (context-var
-                 (first (print (ambiguous-debug-vars debug-fun "CONTEXT"))))
-               (context (and env
-                             (sb!eval2::environment-context env)))
+               (debug-info (and env (sb!eval2::environment-debug-record env)))
+               (context (and debug-info (sb!eval2::debug-record-context debug-info)))
                (interpreted-debug-fun
                  (make-interpreted-debug-fun
                   :%lambda-list (list) ;FIXME
