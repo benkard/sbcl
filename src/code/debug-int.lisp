@@ -701,7 +701,8 @@
   (let ((debug-info (and env (sb!eval2::environment-debug-record env))))
     (when debug-info
       (let* ((context (and debug-info (sb!eval2::debug-record-context debug-info)))
-             (vars    (mapcar #'sb!eval2::lexical-name (sb!eval2::context-lexicals context))))
+             (vars    (mapcar #'sb!eval2::lexical-name
+                              (sb!eval2::context-collect context 'sb!eval2::context-lexicals))))
         (flet ((make-debug-var (var)
                  (let ((lexical
                          (sb!eval2::context-find-lexical context var)))
@@ -710,7 +711,7 @@
                     0
                     (sb!eval2::lexical-nesting lexical)
                     (sb!eval2::lexical-offset lexical)))))
-          (mapcar #'make-debug-var vars))))))
+          (coerce (mapcar #'make-debug-var vars) 'simple-vector))))))
 
 
 (defun interpreter-frame-environment (frame)
