@@ -304,9 +304,7 @@
     (typecase (sb!c::source-path-tlf-number sb!c::*current-path*)
       (cons (print (first (last sb!c::*current-path*)))))
     ;;(print sb!c::*source-namestring*)
-    #+(or)
-    (setf (source-location closure) (sb!c::make-definition-source-location
-                                     )))
+    (setf (source-location closure) (sb!c::make-definition-source-location)))
   closure)
 
 (defmacro eval-lambda (lambda-list &body body)
@@ -789,10 +787,9 @@
                                        (*form* form)
                                        (sb!c::*current-path*
                                         (when (and (boundp 'sb!c::*source-paths*)
-                                                   (boundp 'sb!c::*current-path*))
+                                                   (sb!c::source-form-has-path-p form))
                                           (sb!c::ensure-source-path form))))
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
-  ;;(print form)
   (values
    (cond
      ((sb!int:self-evaluating-p form)
