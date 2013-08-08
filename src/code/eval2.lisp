@@ -312,6 +312,9 @@
     (sb!int:named-lambda eval-closure
       ,lambda-list ,@body)))
 
+(defmacro interpreted-lambda (lambda-list &body body)
+  `(sb!int:named-lambda interpreted-function
+     ,lambda-list ,@body))
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
 (defun prepare-ref (var context)
@@ -731,12 +734,12 @@
               ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
               (if envp
                   (eval-lambda (env)
-                    (lambda (&rest args)
+                    (interpreted-lambda (&rest args)
                       (declare (dynamic-extent args))
                       (let ((new-env (make-environment debug-info env varnum)))
                         (apply #'handle-arguments new-env args))))
                   (eval-lambda (env)
-                    (lambda (&rest args)
+                    (interpreted-lambda (&rest args)
                       (declare (dynamic-extent args))
                       (with-dynamic-extent-environment (new-env debug-info env varnum)
                         (apply #'handle-arguments new-env args)))))))))))
