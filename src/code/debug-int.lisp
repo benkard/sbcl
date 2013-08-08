@@ -738,8 +738,6 @@
               'sb!eval2::eval-closure)
     (return-from possibly-an-interpreted-frame
       frame))
-  ;;(format t "~&; Caught an interpreted frame.")
-  ;;(setf (debug-fun-%function (frame-debug-fun frame)) :unparsed)
   (let* ((debug-fun (frame-debug-fun frame))
          (closure (let ((closure? (frame-closure-vars frame)))
                     (when (functionp closure?)
@@ -760,27 +758,6 @@
          (code-location
            (compute-interpreted-code-location interpreted-debug-fun
                                               source-path)))
-    ;;(print source-path)
-    ;;(print closure)
-    ;;(print (frame-closure-vars frame))
-    ;;(setf (debug-fun-%function interpreted-debug-fun) closure)
-    #+(or)
-    (when closure
-      (print closure)
-      (print source-info)
-      (print source-path))
-    #+(or)
-    (progn
-      (print (frame-code-location frame))
-      (print (compiled-frame-escaped  frame))
-      (print (compiled-debug-fun-compiler-debug-fun debug-fun))
-      (print (debug-fun-lambda-list debug-fun))
-      (print (debug-fun-fun debug-fun))
-      (print (debug-fun-debug-vars debug-fun))
-      (print (debug-fun-debug-blocks debug-fun)))
-    #+(or)
-    (force-output)
-    ;;(assert closure)
     (setf (debug-fun-blocks interpreted-debug-fun)
           (vector (make-interpreted-debug-block
                    :code-locations (vector code-location)
