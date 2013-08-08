@@ -775,8 +775,11 @@
                                     'sb!eval2::eval-closure))
                               up-frame))
          (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
-                    (when (functionp closure?)
-                      closure?)))
+                    (typecase closure?
+                      (function closure?)
+                      (number (warn 'simple-warning
+                                    :format-control "Frame ~S has an invalid closure pointer"
+                                    :format-arguments (list eval-closure-frame))))))
          (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
          (env (interpreter-frame-environment eval-closure-frame))
          (debug-info (and env (sb!eval2::environment-debug-record env)))
