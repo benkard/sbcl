@@ -222,6 +222,12 @@
   (offset nil :type fixnum)
   (info nil))
 
+(defstruct (fake-debug-var
+            (:include debug-var)
+            (:constructor make-fake-debug-var
+                (symbol id value &aux (alive-p t))))
+  (value nil))
+
 ;;;; frames
 
 ;;; These represent call frames on the stack.
@@ -722,6 +728,22 @@
          (ignore-errors
           (access-compiled-debug-var-slot env-var frame)))))
 
+
+(defun compute-interpreted-lambda-list (debug-vars frame lambda-list args)
+  (declare (ignore debug-vars frame lambda-list))
+  ;; FIXME
+  (mapcar #'(lambda (v) (make-fake-debug-var (gensym) 0 v)) args))
+
+
+(defun frame-find-upframe-if (predicate frame)
+  (cond ((funcall predicate frame)
+         frame)
+        ((null (frame-up frame))
+         nil)
+        (t
+         (frame-find-upframe-if predicate (frame-up frame)))))
+
+
 ;;;
 ;;;
 (defun possibly-an-interpreted-frame (frame up-frame)
@@ -747,32 +769,39 @@
     (return-from possibly-an-interpreted-frame
       frame))
   (let* ((debug-fun (frame-debug-fun frame))
-         (closure (let ((closure? (frame-closure-vars frame)))
+         (eval-closure-frame (frame-find-upframe-if
+                              (lambda (x)
+                                (eq (debug-fun-name (frame-debug-fun x))
+                                    'sb!eval2::eval-closure))
+                              up-frame))
+         (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
                     (when (functionp closure?)
                       closure?)))
-         ;;(source-info (gethash closure (symbol-value 'sb!eval2::*source-info*)))
          (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
-         ;;(source-loc  (gethash closure (symbol-value 'sb!eval2::*source-locations*)))
-         ;;(env-var (first (ambiguous-debug-vars debug-fun "ENV")))
-         (env (interpreter-frame-environment frame))
+         (env (interpreter-frame-environment eval-closure-frame))
          (debug-info (and env (sb!eval2::environment-debug-record env)))
-         (interpreted-debug-fun
-           (make-interpreted-debug-fun
-            :%lambda-list (and debug-info
-                               (sb!eval2::debug-record-lambda-list debug-info))
-            :%debug-vars (compute-interpreted-debug-vars env)
-            :%function closure
-            :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
-         (code-location
-           (compute-interpreted-code-location interpreted-debug-fun
-                                              source-path))
          (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
          (more-context (debug-var-value (first more-info) frame))
          (more-count (debug-var-value (second more-info) frame))
          (args
-           (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count))))
-    ;;(print args)
-    ;;(print (compiled-debug-fun-lambda-list (frame-debug-fun frame)))
+           (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count)))
+         (debug-vars
+           (compute-interpreted-debug-vars env))
+         (interpreted-debug-fun
+           (make-interpreted-debug-fun
+            :%lambda-list (and debug-info
+                               (list
+                                (compute-interpreted-lambda-list
+                                 debug-vars
+                                 frame
+                                 (sb!eval2::debug-record-lambda-list debug-info)
+                                 args)))
+            :%debug-vars debug-vars
+            :%function closure
+            :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
+         (code-location
+           (compute-interpreted-code-location interpreted-debug-fun
+                                              source-path)))
     (setf (debug-fun-blocks interpreted-debug-fun)
           (vector (make-interpreted-debug-block
                    :code-locations (vector code-location)
@@ -789,9 +818,8 @@
                  frame
                  env)))
           interpreted-frame)
-        ;;(frame-down frame)
-        frame
-        )))
+        frame)))
+
 
 ;;;
 ;;;
@@ -1583,8 +1611,6 @@ register."
 (defun interpreted-debug-fun-lambda-list (debug-fun)
   ;; This is used in the debugger to display the frame header
   ;; (function name + arguments).
-  ;;
-  ;;FIXME
   (let ((lambda-list-cons (debug-fun-%lambda-list debug-fun)))
    (if lambda-list-cons
        (car lambda-list-cons)
@@ -2234,7 +2260,8 @@ register."
 (defun debug-var-value (debug-var frame)
   (etypecase debug-var
     (compiled-debug-var (compiled-debug-var-value debug-var frame))
-    (interpreted-debug-var (interpreted-debug-var-value debug-var frame))))
+    (interpreted-debug-var (interpreted-debug-var-value debug-var frame))
+    (fake-debug-var (fake-debug-var-value debug-var))))
 
 (defun interpreted-debug-var-value (debug-var frame)
   (sb!eval2::environment-value (interpreted-frame-env frame)
@@ -2695,14 +2722,18 @@ register."
     (compiled-debug-var
      (compiled-debug-var-validity debug-var basic-code-location))
     (interpreted-debug-var
-     (interpreted-debug-var-validity debug-var basic-code-location))))
+     (interpreted-debug-var-validity debug-var basic-code-location))
+    (fake-debug-var
+     :valid)))
 
 (defun debug-var-info (debug-var)
   (etypecase debug-var
     (compiled-debug-var
      (compiled-debug-var-info debug-var))
     (interpreted-debug-var
-     (interpreted-debug-var-info debug-var))))
+     nil)
+    (fake-debug-var
+     nil)))
 
 (defun interpreted-debug-var-validity (debug-var basic-code-location)
   (declare (ignore debug-var basic-code-location))
