@@ -822,7 +822,7 @@
                    ((lambda)
                     (prepare-lambda (rest fun-form) context))
                    ((sb!int:named-lambda)
-                    (prepare-lambda (cddr fun-form) context))
+                    (prepare-lambda (cddr fun-form) context :name (cadr form)))
                    (t
                     (assert (sb!int:valid-function-name-p fun-form))
                     (prepare-function-ref fun-form context)))))))
@@ -1143,7 +1143,7 @@
            ((sb!ext:truly-the)
             (prepare-form (third form) context))
            ((sb!int:named-lambda)
-            (prepare-lambda (cddr form) context))
+            (prepare-lambda (cddr form) context :name (cadr form)))
            ((symbol-macrolet)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
