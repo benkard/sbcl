@@ -729,13 +729,21 @@
     (return-from possibly-an-interpreted-frame
       nil))
   (when (or (equal (debug-fun-name (frame-debug-fun frame))
+                   '(sb!c::&more-processor
+                     (labels sb!eval2::iter :in sb!eval2::prepare-lambda)))
+            (equal (debug-fun-name (frame-debug-fun frame))
                    '(labels sb!eval2::iter :in sb!eval2::prepare-lambda))
             (equal (debug-fun-name (frame-debug-fun frame))
-                   '(flet sb!eval2::handle-arguments :in sb!eval2::prepare-lambda)))
+                   '(flet sb!eval2::handle-arguments :in sb!eval2::prepare-lambda))
+            (equal (debug-fun-name (frame-debug-fun frame))
+                   '(sb!c::&more-processor
+                     (flet sb!eval2::handle-arguments :in sb!eval2::prepare-lambda)))
+            (equal (debug-fun-name (frame-debug-fun frame))
+                   'sb!eval2::eval-closure))
     (return-from possibly-an-interpreted-frame
       (frame-down frame)))
   (unless (eq (debug-fun-name (frame-debug-fun frame))
-              'sb!eval2::eval-closure)
+              'sb!eval2::interpreted-function)
     (return-from possibly-an-interpreted-frame
       frame))
   (let* ((debug-fun (frame-debug-fun frame))
@@ -757,7 +765,14 @@
             :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
          (code-location
            (compute-interpreted-code-location interpreted-debug-fun
-                                              source-path)))
+                                              source-path))
+         (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
+         (more-context (debug-var-value (first more-info) frame))
+         (more-count (debug-var-value (second more-info) frame))
+         (args
+           (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count))))
+    ;;(print args)
+    ;;(print (compiled-debug-fun-lambda-list (frame-debug-fun frame)))
     (setf (debug-fun-blocks interpreted-debug-fun)
           (vector (make-interpreted-debug-block
                    :code-locations (vector code-location)
@@ -774,7 +789,9 @@
                  frame
                  env)))
           interpreted-frame)
-        (frame-down frame))))
+        ;;(frame-down frame)
+        frame
+        )))
 
 ;;;
 ;;;
