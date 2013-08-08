@@ -811,16 +811,16 @@
 ;;;
 (defun eval-closure-debug-source (closure)
   (let ((source-loc (gethash closure (symbol-value 'sb!eval2::*source-locations*))))
-    (sb!c::make-debug-source
-     :namestring (and source-loc
-                      (sb!c::definition-source-location-namestring
-                       source-loc))
-     :created nil
-     :source-root 0
-     :start-positions nil
-     :form nil ;FIXME
-     :function closure
-     :compiled 0)))
+    (if source-loc
+        (sb!c::make-debug-source
+         :namestring (sb!c::definition-source-location-namestring source-loc)
+         :created nil
+         :source-root 0
+         :start-positions nil
+         :form nil                      ;FIXME
+         :function closure
+         :compiled 0)
+        nil)))
 
 
 ;;; Return the top frame of the control stack as it was before calling
@@ -849,8 +849,7 @@
     (when saved-fp
       (compute-calling-frame (descriptor-sap saved-fp)
                              (descriptor-sap saved-pc)
-                             up-frame
-                             t))))
+                             up-frame))))
 
 ;;; Return the frame immediately below FRAME on the stack; or when
 ;;; FRAME is the bottom of the stack, return NIL.
@@ -1961,8 +1960,7 @@ register."
 (defun compute-interpreted-code-location-debug-block (code-location)
   (if (code-location-unknown-p code-location)
       (debug-signal 'no-debug-blocks :debug-fun nil)
-      (first (debug-fun-debug-blocks (code-location-debug-fun code-location))))
-  (error "NYI"))
+      (elt (debug-fun-debug-blocks (code-location-debug-fun code-location)) 0)))
 
 
 ;;; Store and return BASIC-CODE-LOCATION's debug-block. We determines
@@ -2203,6 +2201,10 @@ register."
     ;; (There used to be more cases back before sbcl-0.7.0, when we
     ;; did special tricks to debug the IR1 interpreter.)
     ))
+
+(defun interpreted-debug-block-fun-name (debug-block)
+  (debug-fun-name
+   (interpreted-debug-block-debug-fun debug-block)))
 
 (defun debug-block-code-locations (debug-block)
   (etypecase debug-block
@@ -3447,7 +3449,8 @@ register."
                            ;; declared to be a SAP.
                            #!+(or x86 x86-64) (sb!vm:context-pc scp)
                            #!-(or x86 x86-64) nil
-                           nil)))
+                           nil)
+    nil))
 
 (defun handle-fun-end-breakpoint (offset component context)
   (let ((data (breakpoint-data component offset nil)))
