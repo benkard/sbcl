@@ -6,8 +6,8 @@
 
 (in-package "SB!EVAL2")
 
-;;(declaim (optimize (debug 3) (space 0) (speed 0) (safety 3) (compilation-speed 0)))
-(declaim (optimize (debug 3) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
+(declaim (optimize (debug 3) (space 0) (speed 0) (safety 3) (compilation-speed 0)))
+;;(declaim (optimize (debug 3) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
 (declaim (optimize sb!c::store-closure-debug-pointer))
 
 (defconstant +stack-max+ 8)
@@ -303,12 +303,12 @@
 (defmacro eval-lambda (lambda-list &body body)
   `(annotate-lambda-with-source
     (sb!int:named-lambda eval-closure ,lambda-list
-      (declare (optimize sb!c::store-closure-debug-pointer debug speed (safety 0)))
+      (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
       ,@body)))
 
 (defmacro interpreted-lambda (lambda-list &body body)
   `(sb!int:named-lambda interpreted-function ,lambda-list
-     (declare (optimize sb!c::store-closure-debug-pointer debug speed (safety 0)))
+     (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
      ,@body))
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
@@ -527,7 +527,7 @@
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (lambda-form context &key (name nil namep))
-  (declare (optimize debug speed (safety 0) sb!c::store-closure-debug-pointer))
+  (declare (optimize debug (safety 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
