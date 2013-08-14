@@ -368,7 +368,11 @@ If an unsupported TYPE is requested, the function will return NIL.
                     (sb-eval:interpreted-function-source-location object))))
        source))
     (function
-     (cond ((struct-accessor-p object)
+     (cond #+sb-eval
+           ((sb-eval2::interpreted-function-p object)
+            (translate-source-location
+             (sb-eval2::interpreted-function-source-location object)))
+           ((struct-accessor-p object)
             (find-definition-source
              (struct-accessor-structure-class object)))
            ((struct-predicate-p object)

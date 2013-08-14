@@ -18,6 +18,16 @@
 (defvar *source-info* (make-hash-table :weakness :key :test #'eq))
 (defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
 (defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
+(defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
+
+(defun interpreted-function-source-location (function)
+  (gethash function *source-locations* nil))
+
+(defun interpreted-function-p (function)
+  (gethash function *interpreted-functions* nil))
+
+(defun (setf interpreted-function-p) (val function)
+  (setf (gethash function *interpreted-functions*) (and val t)))
 
 (defmacro specialize (var value possible-values &body body)
   `(ecase ,value
@@ -300,6 +310,11 @@
     (setf (source-location closure) (sb!c::make-definition-source-location)))
   closure)
 
+(defun annotate-interpreted-lambda-with-source (closure)
+  (annotate-lambda-with-source closure)
+  (setf (interpreted-function-p closure) t)
+  closure)
+
 (defmacro eval-lambda (lambda-list &body body)
   `(annotate-lambda-with-source
     (sb!int:named-lambda eval-closure ,lambda-list
@@ -307,9 +322,10 @@
       ,@body)))
 
 (defmacro interpreted-lambda (lambda-list &body body)
-  `(sb!int:named-lambda interpreted-function ,lambda-list
-     (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
-     ,@body))
+  `(annotate-interpreted-lambda-with-source
+    (sb!int:named-lambda interpreted-function ,lambda-list
+      (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
+      ,@body)))
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
 (defun prepare-ref (var context)
