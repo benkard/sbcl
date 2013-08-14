@@ -310,8 +310,11 @@
     (setf (source-location closure) (sb!c::make-definition-source-location)))
   closure)
 
-(defun annotate-interpreted-lambda-with-source (closure)
-  (annotate-lambda-with-source closure)
+(defun annotate-interpreted-lambda-with-source (closure current-path source-info)
+  (when (and current-path source-info)
+    (let ((sb!c::*current-path* current-path)
+          (sb!c::*source-info* source-info))
+      (annotate-lambda-with-source closure)))
   (setf (interpreted-function-p closure) t)
   closure)
 
@@ -321,11 +324,13 @@
       (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
       ,@body)))
 
-(defmacro interpreted-lambda (lambda-list &body body)
+(defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
   `(annotate-interpreted-lambda-with-source
     (sb!int:named-lambda interpreted-function ,lambda-list
       (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
-      ,@body)))
+      ,@body)
+    ,current-path
+    ,source-info))
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
 (defun prepare-ref (var context)
@@ -744,17 +749,19 @@
                           (return
                             (funcall body* new-env)))))))
               ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
+            (let ((current-path (and (boundp 'sb-c::*current-path*) sb-c::*current-path*))
+                  (source-info (and (boundp 'sb-c::*source-info*) sb-c::*source-info*)))
               (if envp
                   (eval-lambda (env)
-                    (interpreted-lambda (&rest args)
+                    (interpreted-lambda (current-path source-info) (&rest args)
                       (declare (dynamic-extent args))
                       (let ((new-env (make-environment debug-info env varnum)))
                         (apply #'handle-arguments new-env args))))
                   (eval-lambda (env)
-                    (interpreted-lambda (&rest args)
+                    (interpreted-lambda (current-path source-info) (&rest args)
                       (declare (dynamic-extent args))
                       (with-dynamic-extent-environment (new-env debug-info env varnum)
-                        (apply #'handle-arguments new-env args)))))))))))
+                        (apply #'handle-arguments new-env args))))))))))))
 
 (defun context->native-environment (context)
   (let ((functions
