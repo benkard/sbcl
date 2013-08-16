@@ -6,9 +6,8 @@
 
 (in-package "SB!EVAL2")
 
-(declaim (optimize (debug 3) (space 0) (speed 0) (safety 3) (compilation-speed 0)))
-;;(declaim (optimize (debug 3) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
-(declaim (optimize sb!c::store-closure-debug-pointer))
+(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
+                   (sb!c::store-closure-debug-pointer 3)))
 
 (defconstant +stack-max+ 8)
 
@@ -327,7 +326,7 @@
 (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
   `(annotate-interpreted-lambda-with-source
     (sb!int:named-lambda interpreted-function ,lambda-list
-      (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
+      (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)
     ,current-path
     ,source-info))
@@ -548,7 +547,7 @@
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (lambda-form context &key (name nil namep))
-  (declare (optimize debug (safety 0) sb!c::store-closure-debug-pointer))
+  ;;(declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
