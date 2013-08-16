@@ -748,8 +748,8 @@
                           (return
                             (funcall body* new-env)))))))
               ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
-            (let ((current-path (and (boundp 'sb-c::*current-path*) sb-c::*current-path*))
-                  (source-info (and (boundp 'sb-c::*source-info*) sb-c::*source-info*)))
+            (let ((current-path (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
+                  (source-info (and (boundp 'sb!c::*source-info*) sb!c::*source-info*)))
               (if envp
                   (eval-lambda (env)
                     (interpreted-lambda (current-path source-info) (&rest args)
