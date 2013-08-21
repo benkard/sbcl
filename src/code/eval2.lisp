@@ -38,9 +38,9 @@
 
 (defstruct (debug-record (:constructor
                              make-debug-record
-                             (context &optional lambda-list function-name)))
+                             (context &optional (lambda-list :none) function-name)))
   (context nil :type context)
-  (lambda-list nil :type list)
+  (lambda-list nil :type (or list :none))
   (function-name nil))
 
 (declaim (inline %make-environment))
@@ -558,11 +558,21 @@
         (when morep
           (error "The interpreter does not support the lambda-list keyword ~S"
                  'sb!int:&more))
-        (let* ((argvars (append required
-                                (mapcan (lambda (x) (lambda-binding-vars x :optional)) optional)
-                                (and restp (list rest))
-                                (mapcan (lambda (x) (lambda-binding-vars x :key)) keys)
-                                (mapcan (lambda (x) (lambda-binding-vars x :aux)) aux)))
+        (let* ((required-vars required)
+               (optional-vars (mapcar (lambda (x) (lambda-binding-vars x :optional)) optional))
+               (rest-vars     (and restp (list rest)))
+               (key-vars      (mapcar (lambda (x) (lambda-binding-vars x :key)) keys))
+               (aux-vars      (mapcan (lambda (x) (lambda-binding-vars x :aux)) aux))
+               (argvar-info (list required-vars
+                                  optional-vars
+                                  rest-vars
+                                  key-vars
+                                  aux-vars))
+               (argvars (append required-vars
+                                (reduce #'append optional-vars)
+                                rest-vars
+                                (reduce #'append key-vars)
+                                aux-vars))
                (keywords (mapcar #'lambda-key keys))
                (required-num (length required))
                (optional-num (length optional))
@@ -601,7 +611,7 @@
                          (some (lambda (x) (maybe-closes-over-p context x argvars))
                                default-values)))
                (body-context (context-add-specials new-context specials))
-               (debug-info (make-debug-record body-context (list lambda-list) name))
+               (debug-info (make-debug-record body-context argvar-info name))
                (body* (prepare-form
                        (if namep
                            `(block ,(sb!int:fun-name-block-name name) ,@body)
