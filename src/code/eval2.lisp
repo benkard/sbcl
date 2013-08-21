@@ -38,9 +38,9 @@
 
 (defstruct (debug-record (:constructor
                              make-debug-record
-                             (context &optional lambda-list function-name)))
+                             (context &optional (lambda-list :none) function-name)))
   (context nil :type context)
-  (lambda-list nil :type list)
+  (lambda-list nil :type (or list :none))
   (function-name nil))
 
 (declaim (inline %make-environment))
@@ -601,7 +601,7 @@
                          (some (lambda (x) (maybe-closes-over-p context x argvars))
                                default-values)))
                (body-context (context-add-specials new-context specials))
-               (debug-info (make-debug-record body-context (list lambda-list) name))
+               (debug-info (make-debug-record body-context lambda-list name))
                (body* (prepare-form
                        (if namep
                            `(block ,(sb!int:fun-name-block-name name) ,@body)
