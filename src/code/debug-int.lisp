@@ -954,23 +954,25 @@
                   ((or bogus-debug-fun interpreted-debug-fun)
                    (let ((fp (frame-pointer frame)))
                      (when (control-stack-pointer-valid-p fp)
-                       #!+(or x86 x86-64)
-                       (multiple-value-bind (ok ra ofp) (x86-call-context fp)
-                         (if ok
-                             (compute-calling-frame ofp ra frame)
-                             (find-saved-frame-down fp frame)))
-                       #!-(or x86 x86-64)
-                       (compute-calling-frame
-                        #!-alpha
-                        (sap-ref-sap fp (* ocfp-save-offset
-                                           sb!vm:n-word-bytes))
-                        #!+alpha
-                        (int-sap
-                         (sap-ref-32 fp (* ocfp-save-offset
-                                           sb!vm:n-word-bytes)))
+                       (possibly-an-interpreted-frame
+                        #!+(or x86 x86-64)
+                        (multiple-value-bind (ok ra ofp) (x86-call-context fp)
+                          (if ok
+                              (compute-calling-frame ofp ra frame)
+                              (find-saved-frame-down fp frame)))
+                        #!-(or x86 x86-64)
+                        (compute-calling-frame
+                         #!-alpha
+                         (sap-ref-sap fp (* ocfp-save-offset
+                                            sb!vm:n-word-bytes))
+                         #!+alpha
+                         (int-sap
+                          (sap-ref-32 fp (* ocfp-save-offset
+                                            sb!vm:n-word-bytes)))
 
-                        (stack-ref fp lra-save-offset)
+                         (stack-ref fp lra-save-offset)
 
+                         frame)
                         frame)))))))
         down)))
 
