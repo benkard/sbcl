@@ -89,12 +89,8 @@
 (defun lexical-with-nesting (lexical nesting)
   (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
 
-#+(or)
 (defun maybe-references-p/env (form vars env)
   ;; Use `(function ,name) for local functions.
-  ;;
-  ;; FIXME: This doesn't do macro expansion, so it's probably
-  ;; incorrect.
   (let ((sb!walker::*walk-form-expand-macros-p* t))
     (sb!walker:walk-form
      form
@@ -113,7 +109,6 @@
       (maybe-closes-over-p/env form vars (context->native-environment context))
     (serious-condition () t)))
 
-#+(or)
 (defun maybe-closes-over-p/env (form vars env)
   (let ((sb!walker::*walk-form-expand-macros-p* t))
     (sb!walker:walk-form
@@ -525,7 +520,7 @@
                                                 :environment env)))
       (prepare-lambda `((,whole ,env) ,body-form)
                       context
-                      ;;:name name
+                      ;;:name name   ;unnecessary because of PARSE-DEFMACRO
                       ))))
 
 (defmacro incff (x &optional (num 1))
@@ -840,7 +835,7 @@
                    ((lambda)
                     (prepare-lambda (rest fun-form) context))
                    ((sb!int:named-lambda)
-                    (prepare-lambda (cddr fun-form) context :name (cadr form)))
+                    (prepare-lambda (cddr fun-form) context :name (cadr fun-form)))
                    (t
                     (assert (sb!int:valid-function-name-p fun-form))
                     (prepare-function-ref fun-form context)))))))
