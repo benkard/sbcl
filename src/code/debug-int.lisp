@@ -222,12 +222,6 @@
   (offset nil :type fixnum)
   (info nil))
 
-(defstruct (fake-debug-var
-            (:include debug-var)
-            (:constructor make-fake-debug-var
-                (symbol id value &aux (alive-p t))))
-  (value nil))
-
 ;;;; frames
 
 ;;; These represent call frames on the stack.
@@ -318,7 +312,8 @@
             (:include debug-fun)
             (:constructor make-interpreted-debug-fun)
             (:copier nil))
-  %name)
+  %name
+  %lambda-list-gen)
 
 (defstruct (compiled-debug-fun
             (:include debug-fun)
@@ -729,10 +724,9 @@
           (access-compiled-debug-var-slot env-var frame)))))
 
 
-(defun compute-interpreted-lambda-list (debug-vars frame lambda-list args)
-  (declare (ignore frame))
+(defun compute-interpreted-lambda-list (debug-vars lambda-list args)
   (if (eq lambda-list :none)
-      (mapcar #'(lambda (v) (make-fake-debug-var (gensym) 0 v)) args)
+      (signal 'lambda-list-unavailable)
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
                             morep more-context more-count)
           (sb!int:parse-lambda-list lambda-list)
@@ -849,13 +843,11 @@
                  (compute-interpreted-debug-vars env))
                (interpreted-debug-fun
                  (make-interpreted-debug-fun
-                  :%lambda-list (and debug-info
-                                     (list
+                  :%lambda-list-gen (lambda ()
                                       (compute-interpreted-lambda-list
                                        debug-vars
-                                       frame
                                        (sb!eval2::debug-record-lambda-list debug-info)
-                                       args)))
+                                       args))
                   :%debug-vars debug-vars
                   :%function closure
                   :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
@@ -1671,10 +1663,12 @@ register."
 (defun interpreted-debug-fun-lambda-list (debug-fun)
   ;; This is used in the debugger to display the frame header
   ;; (function name + arguments).
-  (let ((lambda-list-cons (debug-fun-%lambda-list debug-fun)))
-   (if lambda-list-cons
-       (car lambda-list-cons)
-       (signal 'lambda-list-unavailable))))
+  (let ((lambda-list-gen (interpreted-debug-fun-%lambda-list-gen debug-fun))
+        (lambda-list     (debug-fun-%lambda-list debug-fun)))
+    (if (eq lambda-list :unparsed)
+        (setf (debug-fun-%lambda-list debug-fun)
+              (funcall lambda-list-gen))
+        lambda-list)))
 
 ;;; Note: If this has to compute the lambda list, it caches it in DEBUG-FUN.
 (defun compiled-debug-fun-lambda-list (debug-fun)
@@ -2320,8 +2314,7 @@ register."
 (defun debug-var-value (debug-var frame)
   (etypecase debug-var
     (compiled-debug-var (compiled-debug-var-value debug-var frame))
-    (interpreted-debug-var (interpreted-debug-var-value debug-var frame))
-    (fake-debug-var (fake-debug-var-value debug-var))))
+    (interpreted-debug-var (interpreted-debug-var-value debug-var frame))))
 
 (defun interpreted-debug-var-value (debug-var frame)
   (sb!eval2::environment-value (interpreted-frame-env frame)
@@ -2782,17 +2775,13 @@ register."
     (compiled-debug-var
      (compiled-debug-var-validity debug-var basic-code-location))
     (interpreted-debug-var
-     (interpreted-debug-var-validity debug-var basic-code-location))
-    (fake-debug-var
-     :valid)))
+     (interpreted-debug-var-validity debug-var basic-code-location))))
 
 (defun debug-var-info (debug-var)
   (etypecase debug-var
     (compiled-debug-var
      (compiled-debug-var-info debug-var))
     (interpreted-debug-var
-     nil)
-    (fake-debug-var
      nil)))
 
 (defun interpreted-debug-var-validity (debug-var basic-code-location)
