@@ -796,6 +796,9 @@
 ;;;
 ;;;
 (defun possibly-an-interpreted-frame (frame up-frame)
+  (when sb!eval2::*debug-interpreter*
+    (return-from possibly-an-interpreted-frame
+      frame))
   (when (null frame)
     (return-from possibly-an-interpreted-frame
       nil))
@@ -829,8 +832,8 @@
                           (typecase closure?
                             (function closure?)
                             (number (warn 'simple-warning
-                                          :format-control "Frame ~S has an invalid closure pointer"
-                                          :format-arguments (list eval-closure-frame))))))
+                                          :format-control "Frame ~S has an invalid closure pointer (~S)"
+                                          :format-arguments (list eval-closure-frame closure?))))))
                (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
                (env (interpreter-frame-environment eval-closure-frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))

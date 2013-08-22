@@ -19,6 +19,8 @@
 (defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
 (defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
 
+(defparameter *debug-interpreter* nil)
+
 (defun interpreted-function-source-location (function)
   (gethash function *source-locations* nil))
 
@@ -805,6 +807,8 @@
                                        (*form* form)
                                        (sb!c::*current-path*
                                         (when (and (boundp 'sb!c::*source-paths*)
+                                                   (or (sb!c::get-source-path form)
+                                                       (boundp 'sb!c::*current-path*))
                                                    (sb!c::source-form-has-path-p form))
                                           (sb!c::ensure-source-path form))))
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
