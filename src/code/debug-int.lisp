@@ -751,7 +751,7 @@
                              (when (cddr optform)
                                (list (find-debug-var (caddr optform))))))))
                  (find-rest-var (var)
-                   (list :rest var))
+                   (list :rest (find-debug-var var)))
                  (find-key-vars (keyform)
                    (etypecase keyform
                      (symbol
@@ -784,7 +784,9 @@
                   for v = (pop args)
                   for vars = (find k keyvars :key #'second)
                   when vars
-                    do (push vars arg-vars))
+                    do (push vars arg-vars)
+                  else
+                    do (push (list :keyword k :deleted) arg-vars))
             (nreverse arg-vars))))))
 
 
