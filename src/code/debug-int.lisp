@@ -838,7 +838,7 @@
                (more-context (debug-var-value (first more-info) frame))
                (more-count (debug-var-value (second more-info) frame))
                (args
-                 (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count)))
+                 (multiple-value-list (sb!c:%more-arg-values more-context more-count)))
                (debug-vars
                  (compute-interpreted-debug-vars env))
                (interpreted-debug-fun
