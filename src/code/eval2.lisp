@@ -40,7 +40,7 @@
                              make-debug-record
                              (context &optional (lambda-list :none) function-name)))
   (context nil :type context)
-  (lambda-list nil :type (or list :none))
+  (lambda-list nil :type (or list (member :none)))
   (function-name nil))
 
 (declaim (inline %make-environment))
