@@ -145,4 +145,4 @@ compiled with this declaration in effect.")
 
 (define-optimization-quality store-closure-debug-pointer
     0
-  ("no" "no" "no" "no"))
+  ("no" "yes" "yes" "yes"))
