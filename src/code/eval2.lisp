@@ -302,7 +302,12 @@
 
 (defun annotate-lambda-with-source (closure)
   (when (and (boundp 'sb!c::*current-path*)
-             (boundp 'sb!c::*source-info*))
+             (boundp 'sb!c::*source-info*)
+             (typep (car (last sb!c::*current-path*)) '(or fixnum null)))
+    ;; XXX It's strange that (car (last sb!c::*current-path*)) can
+    ;; ever be a non-fixnum.  This seemingly occurs only in the
+    ;; context of #. evaluation (where *source-info* etc. are bound
+    ;; but not relevant for the form we are processing).
     (setf (source-path closure) sb!c::*current-path*)
     (setf (source-info closure) sb!c::*source-info*)
     (setf (source-location closure) (sb!c::make-definition-source-location)))
