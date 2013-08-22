@@ -821,60 +821,62 @@
               'sb!eval2::interpreted-function)
     (return-from possibly-an-interpreted-frame
       frame))
-  (let* ((debug-fun (frame-debug-fun frame))
-         (eval-closure-frame (frame-find-upframe-if
-                              (lambda (x)
-                                (eq (debug-fun-name (frame-debug-fun x))
-                                    'sb!eval2::eval-closure))
-                              up-frame))
-         (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
-                    (typecase closure?
-                      (function closure?)
-                      (number (warn 'simple-warning
-                                    :format-control "Frame ~S has an invalid closure pointer"
-                                    :format-arguments (list eval-closure-frame))))))
-         (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
-         (env (interpreter-frame-environment eval-closure-frame))
-         (debug-info (and env (sb!eval2::environment-debug-record env)))
-         (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
-         (more-context (debug-var-value (first more-info) frame))
-         (more-count (debug-var-value (second more-info) frame))
-         (args
-           (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count)))
-         (debug-vars
-           (compute-interpreted-debug-vars env))
-         (interpreted-debug-fun
-           (make-interpreted-debug-fun
-            :%lambda-list (and debug-info
-                               (list
-                                (compute-interpreted-lambda-list
-                                 debug-vars
-                                 frame
-                                 (sb!eval2::debug-record-lambda-list debug-info)
-                                 args)))
-            :%debug-vars debug-vars
-            :%function closure
-            :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
-         (code-location
-           (compute-interpreted-code-location interpreted-debug-fun
-                                              source-path)))
-    (setf (debug-fun-blocks interpreted-debug-fun)
-          (vector (make-interpreted-debug-block
-                   :code-locations (vector code-location)
-                   :debug-fun debug-fun
-                   :source-path source-path)))
-    (if (and debug-info
-             (sb!eval2::debug-record-lambda-list debug-info))
-        (let ((interpreted-frame
-                (make-interpreted-frame
-                 up-frame
-                 interpreted-debug-fun
-                 code-location
-                 (frame-number frame)
-                 frame
-                 env)))
-          interpreted-frame)
-        frame)))
+  (let ((eval-closure-frame (frame-find-upframe-if
+                             (lambda (x)
+                               (eq (debug-fun-name (frame-debug-fun x))
+                                   'sb!eval2::eval-closure))
+                             up-frame)))
+    (if (null eval-closure-frame)
+        (frame-down frame)
+        (let* ((debug-fun (frame-debug-fun frame))
+               (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
+                          (typecase closure?
+                            (function closure?)
+                            (number (warn 'simple-warning
+                                          :format-control "Frame ~S has an invalid closure pointer"
+                                          :format-arguments (list eval-closure-frame))))))
+               (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
+               (env (interpreter-frame-environment eval-closure-frame))
+               (debug-info (and env (sb!eval2::environment-debug-record env)))
+               (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
+               (more-context (debug-var-value (first more-info) frame))
+               (more-count (debug-var-value (second more-info) frame))
+               (args
+                 (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count)))
+               (debug-vars
+                 (compute-interpreted-debug-vars env))
+               (interpreted-debug-fun
+                 (make-interpreted-debug-fun
+                  :%lambda-list (and debug-info
+                                     (list
+                                      (compute-interpreted-lambda-list
+                                       debug-vars
+                                       frame
+                                       (sb!eval2::debug-record-lambda-list debug-info)
+                                       args)))
+                  :%debug-vars debug-vars
+                  :%function closure
+                  :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
+               (code-location
+                 (compute-interpreted-code-location interpreted-debug-fun
+                                                    source-path)))
+          (setf (debug-fun-blocks interpreted-debug-fun)
+                (vector (make-interpreted-debug-block
+                         :code-locations (vector code-location)
+                         :debug-fun debug-fun
+                         :source-path source-path)))
+          (if (and debug-info
+                   (sb!eval2::debug-record-lambda-list debug-info))
+              (let ((interpreted-frame
+                      (make-interpreted-frame
+                       up-frame
+                       interpreted-debug-fun
+                       code-location
+                       (frame-number frame)
+                       frame
+                       env)))
+                interpreted-frame)
+              frame)))))
 
 
 ;;;
