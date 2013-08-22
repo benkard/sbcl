@@ -89,6 +89,7 @@
 (defun lexical-with-nesting (lexical nesting)
   (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
 
+#+(or)
 (defun maybe-references-p/env (form vars env)
   ;; Use `(function ,name) for local functions.
   (let ((sb!walker::*walk-form-expand-macros-p* t))
@@ -109,6 +110,7 @@
       (maybe-closes-over-p/env form vars (context->native-environment context))
     (serious-condition () t)))
 
+#+(or)
 (defun maybe-closes-over-p/env (form vars env)
   (let ((sb!walker::*walk-form-expand-macros-p* t))
     (sb!walker:walk-form
