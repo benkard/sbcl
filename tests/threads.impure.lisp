@@ -212,8 +212,7 @@
     (format o "void loop_forever() { while(1) ; }~%"))
   (sb-ext:run-program "/bin/sh"
                       '("run-compiler.sh" "-sbcl-pic" "-sbcl-shared"
-                        "-o" "threads-foreign.so" "threads-foreign.c")
-                      :environment (test-util::test-env))
+                        "-o" "threads-foreign.so" "threads-foreign.c"))
   (sb-alien:load-shared-object (truename "threads-foreign.so"))
   (sb-alien:define-alien-routine loop-forever sb-alien:void)
   (delete-file "threads-foreign.c"))
@@ -1553,3 +1552,16 @@
                (sb-thread:join-thread reader)))))
       (writer))
     (assert (eq result :ok))))
+
+(with-test (:name :thread-alloca)
+  (sb-ext:run-program "sh"
+                      '("run-compiler.sh" "-sbcl-pic" "-sbcl-shared"
+                        "alloca.c" "-o" "alloca.so")
+                      :search t)
+  (load-shared-object (truename "alloca.so"))
+
+  (alien-funcall (extern-alien "alloca_test" (function void)))
+  (sb-thread:join-thread
+   (sb-thread:make-thread
+    (lambda ()
+      (alien-funcall (extern-alien "alloca_test" (function void)))))))

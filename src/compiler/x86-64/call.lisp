@@ -941,9 +941,7 @@
     (move rsi args)
     (move rax function)
     ;; And jump to the assembly routine.
-    (inst lea call-target
-          (make-ea :qword
-                   :disp (make-fixup 'tail-call-variable :assembly-routine)))
+    (inst mov call-target (make-fixup 'tail-call-variable :assembly-routine))
     (inst jmp call-target)))
 
 ;;;; unknown values return
@@ -1089,9 +1087,7 @@
         (emit-label not-single)))
     (move rsi vals)
     (move rcx nvals)
-    (inst lea return-asm
-          (make-ea :qword :disp (make-fixup 'return-multiple
-                                            :assembly-routine)))
+    (inst mov return-asm (make-fixup 'return-multiple :assembly-routine))
     (inst jmp return-asm)
     (trace-table-entry trace-table-normal)))
 
@@ -1152,12 +1148,12 @@
            ;; We must stop when we run out of stack args, not when we
            ;; run out of more args.
            ;; Number to copy = nargs-3
-           (inst sub rcx-tn (fixnumize register-arg-count))
+           (inst sub rbx-tn (fixnumize register-arg-count))
            ;; Everything of interest in registers.
            (inst jmp :be DO-REGS))
           (t
            ;; Number to copy = nargs-fixed
-           (inst sub rcx-tn (fixnumize fixed))))
+           (inst sub rbx-tn (fixnumize fixed))))
 
     ;; Initialize R8 to be the end of args.
     (inst lea source (make-ea :qword :base rbp-tn
@@ -1166,7 +1162,7 @@
 
     ;; We need to copy from downwards up to avoid overwriting some of
     ;; the yet uncopied args. So we need to use R9 as the copy index
-    ;; and RCX as the loop counter, rather than using RCX for both.
+    ;; and RBX as the loop counter, rather than using RBX for both.
     (zeroize copy-index)
 
     ;; We used to use REP MOVS here, but on modern x86 it performs
@@ -1175,13 +1171,10 @@
     (inst mov temp (make-ea :qword :base source :index copy-index))
     (inst mov (make-ea :qword :base rsp-tn :index copy-index) temp)
     (inst add copy-index n-word-bytes)
-    (inst sub rcx-tn (fixnumize 1))
+    (inst sub rbx-tn (fixnumize 1))
     (inst jmp :nz COPY-LOOP)
 
     DO-REGS
-
-    ;; Restore RCX
-    (inst mov rcx-tn rbx-tn)
 
     ;; Here: nargs>=1 && nargs>fixed
     (when (< fixed register-arg-count)
@@ -1237,7 +1230,7 @@
                                 :disp n-word-bytes))))
 
 (define-vop (more-arg)
-    (:translate sb!c::%more-arg)
+  (:translate sb!c::%more-arg)
   (:policy :fast-safe)
   (:args (object :scs (descriptor-reg) :to (:result 1))
          (index :scs (any-reg) :to (:result 1) :target value))
@@ -1276,8 +1269,6 @@
       (inst lea dst (make-ea :qword :index rcx :scale (ash 2 (- word-shift n-fixnum-tag-bits))))
       (maybe-pseudo-atomic stack-allocate-p
        (allocation dst dst node stack-allocate-p list-pointer-lowtag)
-       ;; Set decrement mode (successive args at lower addresses)
-       (inst std)
        ;; Set up the result.
        (move result dst)
        ;; Jump into the middle of the loop, 'cause that's where we want
@@ -1297,8 +1288,7 @@
        (inst sub rcx (fixnumize 1))
        (inst jmp :nz loop)
        ;; NIL out the last cons.
-       (storew nil-value dst 1 list-pointer-lowtag)
-       (inst cld))
+       (storew nil-value dst 1 list-pointer-lowtag))
       (emit-label done))))
 
 ;;; Return the location and size of the &MORE arg glob created by

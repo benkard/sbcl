@@ -76,6 +76,7 @@
             (count :scs (any-reg)))
   (:temporary (:sc descriptor-reg :from (:argument 0) :to (:result 1)) list)
   (:temporary (:sc dword-reg :offset eax-offset :to (:result 1)) eax)
+  (:ignore eax)
   (:vop-var vop)
   (:save-p :compute-only)
   (:generator 0
@@ -87,10 +88,7 @@
     (inst jmp :e DONE)
     (pushw list cons-car-slot list-pointer-lowtag)
     (loadw list list cons-cdr-slot list-pointer-lowtag)
-    (inst mov eax (make-dword-tn list))
-    (inst and al-tn lowtag-mask)
-    (inst cmp al-tn list-pointer-lowtag)
-    (inst jmp :e LOOP)
+    (%test-lowtag list LOOP nil list-pointer-lowtag)
     (error-call vop 'bogus-arg-to-values-list-error list)
 
     DONE
@@ -109,43 +107,19 @@
 ;;; defining a new stack frame.
 (define-vop (%more-arg-values)
   (:args (context :scs (descriptor-reg any-reg) :target src)
-         (skip :scs (any-reg immediate))
          (num :scs (any-reg) :target count))
-  (:arg-types * positive-fixnum positive-fixnum)
-  (:temporary (:sc any-reg :offset rsi-offset :from (:argument 0)) src)
-  (:temporary (:sc descriptor-reg :offset rax-offset) temp)
+  (:arg-types * positive-fixnum)
+  (:temporary (:sc any-reg :from (:argument 0)) src)
+  (:temporary (:sc descriptor-reg) temp)
   (:temporary (:sc unsigned-reg :offset rcx-offset) loop-index)
   (:results (start :scs (any-reg))
             (count :scs (any-reg)))
   (:generator 20
-    (sc-case skip
-      (immediate
-       (cond ((zerop (tn-value skip))
-              (move src context)
-              (move count num))
-             (t
-              (inst lea src (make-ea :dword :base context
-                                     :disp (- (* (tn-value skip)
-                                                 n-word-bytes))))
-              (move count num)
-              (inst sub count (* (tn-value skip) n-word-bytes)))))
-
-      (any-reg
-       (move src context)
-       #!+#.(cl:if (cl:= sb!vm:word-shift sb!vm:n-fixnum-tag-bits) '(and) '(or))
-       (inst sub src skip)
-       #!-#.(cl:if (cl:= sb!vm:word-shift sb!vm:n-fixnum-tag-bits) '(and) '(or))
-       (progn
-         ;; FIXME: This can't be efficient, but LEA (my first choice)
-         ;; doesn't do subtraction.
-         (inst shl skip (- word-shift n-fixnum-tag-bits))
-         (inst sub src skip)
-         (inst shr skip (- word-shift n-fixnum-tag-bits)))
-       (move count num)
-       (inst sub count skip)))
+    (move src context)
+    (move count num)
 
     (inst lea loop-index (make-ea :byte :index count
-                                  :scale (ash 1 (- word-shift n-fixnum-tag-bits))))
+                                        :scale (ash 1 (- word-shift n-fixnum-tag-bits))))
     (inst mov start rsp-tn)
     (inst jrcxz DONE)  ; check for 0 count?
 

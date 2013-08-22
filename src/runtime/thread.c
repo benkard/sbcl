@@ -695,7 +695,7 @@ create_thread_struct(lispobj initial_function) {
     th->state_not_stopped_waitcount = 0;
 #endif
     th->state=STATE_RUNNING;
-#ifdef LISP_FEATURE_STACK_GROWS_DOWNWARD_NOT_UPWARD
+#ifdef ALIEN_STACK_GROWS_DOWNWARD
     th->alien_stack_pointer=((void *)th->alien_stack_start
                              + ALIEN_STACK_SIZE-N_WORD_BYTES);
 #else
@@ -835,8 +835,13 @@ boolean create_os_thread(struct thread *th,os_thread_t *kid_tid)
 #if defined(LISP_FEATURE_WIN32)
        (pthread_attr_setstacksize(th->os_attr, thread_control_stack_size)) ||
 #else
+# if defined(LISP_FEATURE_C_STACK_IS_CONTROL_STACK)
        (pthread_attr_setstack(th->os_attr,th->control_stack_start,
                               thread_control_stack_size)) ||
+# else
+       (pthread_attr_setstack(th->os_attr,th->alien_stack_start,
+                              ALIEN_STACK_SIZE)) ||
+# endif
 #endif
        (retcode = pthread_create
         (kid_tid,th->os_attr,(void *(*)(void *))new_thread_trampoline,th))) {
