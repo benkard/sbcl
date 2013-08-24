@@ -1,34 +1,50 @@
-#+(or)
+#-sbcl
 (defpackage "SB-EVAL2"
   (:use "COMMON-LISP")
   (:shadow "INSTALL")
   (:export "INSTALL" "PREPARE-FORM" "MAKE-NULL-ENVIRONMENT" "MAKE-NULL-CONTEXT"))
 
-(in-package "SB!EVAL2")
+(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
 
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                   (sb!c::store-closure-debug-pointer 3)))
+                   #+sbcl (sb!c::store-closure-debug-pointer 3)))
+
+(setf (find-class 'simple-program-error)
+      #+sbcl (find-class 'sb!int:simple-program-error)
+      #+ccl  (find-class 'ccl::simple-program-error)
+      #-(or sbcl ccl) (error "No implementation of SIMPLE-PROGRAM-ERROR"))
 
 (defconstant +stack-max+ 8)
 
 (defvar *mode* :not-compile-time)
 (defvar *form*)
-(defvar *source-paths* (make-hash-table :weakness :key :test #'eq))
-(defvar *source-info* (make-hash-table :weakness :key :test #'eq))
-(defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
-(defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
-(defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
 
-(defparameter *debug-interpreter* nil)
-
-(defun interpreted-function-source-location (function)
-  (gethash function *source-locations* nil))
-
-(defun interpreted-function-p (function)
-  (gethash function *interpreted-functions* nil))
-
-(defun (setf interpreted-function-p) (val function)
-  (setf (gethash function *interpreted-functions*) (and val t)))
+#+sbcl
+(progn
+  (defvar *source-paths* (make-hash-table :weakness :key :test #'eq))
+  (defvar *source-info* (make-hash-table :weakness :key :test #'eq))
+  (defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
+  (defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
+  (defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
+  (defparameter *debug-interpreter* nil)
+  (defun interpreted-function-source-location (function)
+    (gethash function *source-locations* nil))
+  (defun interpreted-function-p (function)
+    (gethash function *interpreted-functions* nil))
+  (defun (setf interpreted-function-p) (val function)
+    (setf (gethash function *interpreted-functions*) (and val t)))
+  (defun source-path (eval-closure)
+    (gethash eval-closure *source-paths*))
+  (defun source-info (eval-closure)
+    (gethash eval-closure *source-info*))
+  (defun source-location (eval-closure)
+    (gethash eval-closure *source-locations*))
+  (defun (setf source-path) (val eval-closure)
+    (setf (gethash eval-closure *source-paths*) val))
+  (defun (setf source-info) (val eval-closure)
+    (setf (gethash eval-closure *source-info*) val))
+  (defun (setf source-location) (val eval-closure)
+    (setf (gethash eval-closure *source-locations*) val)))
 
 (defmacro specialize (var value possible-values &body body)
   `(ecase ,value
@@ -286,54 +302,113 @@
   (setf (svref (environment-data env) offset) val))
 
 
-(defun source-path (eval-closure)
-  (gethash eval-closure *source-paths*))
-(defun source-info (eval-closure)
-  (gethash eval-closure *source-info*))
-(defun source-location (eval-closure)
-  (gethash eval-closure *source-locations*))
-(defun (setf source-path) (val eval-closure)
-  (setf (gethash eval-closure *source-paths*) val))
-(defun (setf source-info) (val eval-closure)
-  (setf (gethash eval-closure *source-info*) val))
-(defun (setf source-location) (val eval-closure)
-  (setf (gethash eval-closure *source-locations*) val))
+#+sbcl
+(progn
+  (defun annotate-lambda-with-source (closure)
+    (when (and (boundp 'sb!c::*current-path*)
+               (boundp 'sb!c::*source-info*)
+               (typep (car (last sb!c::*current-path*)) '(or fixnum null)))
+      ;; XXX It's strange that (car (last sb!c::*current-path*)) can
+      ;; ever be a non-fixnum.  This seemingly occurs only in the
+      ;; context of #. evaluation (where *source-info* etc. are bound
+      ;; but not relevant for the form we are processing).
+      (setf (source-path closure) sb!c::*current-path*)
+      (setf (source-info closure) sb!c::*source-info*)
+      (setf (source-location closure) (sb!c::make-definition-source-location)))
+    closure)
+  (defun annotate-interpreted-lambda-with-source (closure current-path source-info)
+    (when (and current-path source-info)
+      (let ((sb!c::*current-path* current-path)
+            (sb!c::*source-info* source-info))
+        (annotate-lambda-with-source closure)))
+    (setf (interpreted-function-p closure) t)
+    closure)
+  (defmacro eval-lambda (lambda-list &body body)
+    `(annotate-lambda-with-source
+      (sb!int:named-lambda eval-closure ,lambda-list
+        (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
+        ,@body)))
+  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
+    `(annotate-interpreted-lambda-with-source
+      (sb!int:named-lambda interpreted-function ,lambda-list
+        (declare (optimize sb!c::store-closure-debug-pointer))
+        ,@body)
+      ,current-path
+      ,source-info))
 
+  (defun self-evaluating-p (form)
+    (sb!int:self-evaluating-p form))
 
-(defun annotate-lambda-with-source (closure)
-  (when (and (boundp 'sb!c::*current-path*)
-             (boundp 'sb!c::*source-info*)
-             (typep (car (last sb!c::*current-path*)) '(or fixnum null)))
-    ;; XXX It's strange that (car (last sb!c::*current-path*)) can
-    ;; ever be a non-fixnum.  This seemingly occurs only in the
-    ;; context of #. evaluation (where *source-info* etc. are bound
-    ;; but not relevant for the form we are processing).
-    (setf (source-path closure) sb!c::*current-path*)
-    (setf (source-info closure) sb!c::*source-info*)
-    (setf (source-location closure) (sb!c::make-definition-source-location)))
-  closure)
+  (defun parse-macrolet-binding-form (lambda-list whole body name env)
+    (sb!kernel:parse-defmacro lambda-list
+                              whole
+                              body
+                              name
+                              'macrolet
+                              :environment env))
+  (defun parse-lambda-list (lambda-list)
+    ;; returns values:
+    ;;
+    ;;   (required optional restp rest keyp keys allowp auxp aux morep
+    ;;   more-context more-count)
+    ;;
+    (sb!int:parse-lambda-list lambda-list))
 
-(defun annotate-interpreted-lambda-with-source (closure current-path source-info)
-  (when (and current-path source-info)
-    (let ((sb!c::*current-path* current-path)
-          (sb!c::*source-info* source-info))
-      (annotate-lambda-with-source closure)))
-  (setf (interpreted-function-p closure) t)
-  closure)
+  (defun context->native-environment (context)
+    (let ((functions
+            (loop for (name . expander) in (context-collect context 'context-macros)
+                  collect `(,name . (sb!c::macro . ,expander))))
+          (vars
+            (loop for (name . form) in (context-collect context 'context-symbol-macros)
+                  collect `(,name . (sb!c::macro . ,form)))))
+      (sb!c::internal-make-lexenv functions vars nil nil nil nil nil nil nil nil nil)))
+  (defun native-environment->context (lexenv)
+    (let ((context (make-context nil))
+          (macros%
+            (loop for (name . functional) in (sb!c::lexenv-vars lexenv)
+                  when (eq (car functional) 'sb!c::macro)
+                  collect `(,name . ,(cdr functional))))
+          (symbol-macros%
+            (loop for (name . form) in (sb!c::lexenv-funs lexenv)
+                  when (eq (car form) 'sb!c::macro)
+                  collect `(,name . ,(cdr form)))))
+      (setf (context-macros context) macros%)
+      (setf (context-symbol-macros context) symbol-macros%)
+      context))
+  (defun globally-special-p (var)
+    (eq :special (sb!int:info :variable :kind var)))
+  (defun globally-constant-p (var)
+    (eq :constant (sb!int:info :variable :kind var))))
 
-(defmacro eval-lambda (lambda-list &body body)
-  `(annotate-lambda-with-source
-    (sb!int:named-lambda eval-closure ,lambda-list
-      (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
-      ,@body)))
+#-sbcl
+(progn
+  (defmacro eval-lambda (lambda-list &body body)
+    `(lambda ,lambda-list ,@body))
+  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
+    (declare (ignore current-path source-info))
+    `(lambda ,lambda-list ,@body))
 
-(defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
-  `(annotate-interpreted-lambda-with-source
-    (sb!int:named-lambda interpreted-function ,lambda-list
-      (declare (optimize sb!c::store-closure-debug-pointer))
-      ,@body)
-    ,current-path
-    ,source-info))
+  (defun self-evaluating-p (form)
+    (not (or (symbolp form) (consp form))))
+
+  (defun parse-macrolet-binding-form (lambda-list whole body name env)
+    (error "NYI"))
+  (defun parse-lambda-list (lambda-list)
+    ;; returns values:
+    ;;
+    ;;   (required optional restp rest keyp keys allowp auxp aux)
+    ;;
+    (error "NYI"))
+
+  (defun context->native-environment (context)
+    (error "NYI"))
+  (defun native-environment->context (lexenv)
+    (error "NYI"))
+  (defun globally-special-p (var)
+    (error "NYI"))
+  (defun globally-constant-p (var)
+    (error "NYI")))
+
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
 (defun prepare-ref (var context)
@@ -384,11 +459,16 @@
              (offset  (lexical-offset lexical)))
         (eval-lambda (env)
           (environment-value env nesting offset)))
+      #+sbcl
       (let ((f* (sb!c::fdefinition-object function-name t)))
         (eval-lambda (env)
           (declare (ignore env))
           (or (sb!c::fdefn-fun f*)
-              (error 'undefined-function :name function-name))))))
+              (error 'undefined-function :name function-name))))
+      #-sbcl
+      (eval-lambda (env)
+        (declare (ignore env))
+        (fdefinition function-name))))
 
 
 (declaim (ftype (function (context (or symbol list)) *) context-find-function))
@@ -427,6 +507,7 @@
 (declaim (ftype (function ((or symbol list) list context) eval-closure) prepare-global-call))
 (defun prepare-global-call (f args context)
   (let ((args* (mapcar (lambda (form) (prepare-form form context)) args))
+        #+sbcl
         (f* (sb!c::fdefinition-object f t)))
     (if (< (length args) 20)
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
@@ -437,13 +518,15 @@
                          collect `(,var (nth ,i args*)))
                (eval-lambda (env)
                  (declare (ignorable env))
-                 (funcall (or (sb!c::fdefn-fun f*)
-                              (error 'undefined-function :name f))
+                 (funcall #+sbcl (or (sb!c::fdefn-fun f*)
+                                     (error 'undefined-function :name f))
+                          #-sbcl f
                           ,@(loop for var in argvars
                                   collect `(funcall (the eval-closure ,var) env)))))))
         (eval-lambda (env)
-          (apply (or (sb!c::fdefn-fun f*)
-                     (error 'undefined-function :name f))
+          (apply #+sbcl (or (sb!c::fdefn-fun f*)
+                            (error 'undefined-function :name f))
+                 #-sbcl f
                  (mapcar (lambda (x) (funcall (the eval-closure x) env))
                          args*))))))
 
@@ -521,12 +604,11 @@
       lambda-form
     (let* ((whole (gensym "WHOLE"))
            (env   (gensym "ENV"))
-           (body-form (sb!kernel:parse-defmacro lambda-list
-                                                whole
-                                                body
-                                                name
-                                                'macrolet
-                                                :environment env)))
+           (body-form (parse-macrolet-binding-form lambda-list
+                                                   whole
+                                                   body
+                                                   name
+                                                   env)))
       (prepare-lambda `((,whole ,env) ,body-form)
                       context
                       ;;:name name   ;unnecessary because of PARSE-DEFMACRO
@@ -549,16 +631,24 @@
      (declare (dynamic-extent #',loop-var))
      (,loop-var ,@(mapcar #'second bindings))))
 
+#+sbcl
+(defun fun-name-block-name (fun-name)
+  (sb!int:fun-name-block-name fun-name))
+#-sbcl
+(defun fun-name-block-name (fun-name)
+  (error "NYI"))
+
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (lambda-form context &key (name nil namep))
-  ;;(declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
+  ;;#+sbcl (declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
                             morep more-context more-count)
-          (sb!int:parse-lambda-list lambda-list)
+          (parse-lambda-list lambda-list)
         (declare (ignore more-context more-count))
-        (declare (ignorable auxp))
+        (declare (ignorable auxp morep))
+        #+sbcl
         (when morep
           (error "The interpreter does not support the lambda-list keyword ~S"
                  'sb!int:&more))
@@ -608,7 +698,7 @@
                (debug-info (make-debug-record body-context lambda-list name))
                (body* (prepare-form
                        (if namep
-                           `(block ,(sb!int:fun-name-block-name name) ,@body)
+                           `(block ,(fun-name-block-name name) ,@body)
                            `(progn ,@body))
                        body-context))
                (unbound (gensym)))
@@ -673,7 +763,7 @@
                           (go positional)
                         missing-optionals
                           (unless (>= argi required-num)
-                            (error 'sb!int:simple-program-error
+                            (error 'simple-program-error
                                    :format-control "invalid number of arguments: ~D (expected: >=~D)"
                                    :format-arguments (list (length args) required-num)))
                           (when (>= i (the fixnum (+ required-num
@@ -695,12 +785,12 @@
                         keys
                           (unless keyp
                             (unless (or restp (= argi (length args)))
-                              (error 'sb!int:simple-program-error
+                              (error 'simple-program-error
                                      :format-control "invalid number of arguments: ~D (expected: <=~D)"
                                      :format-arguments (list (length args) (+ required-num optional-num))))
                             (go aux))
                           (unless (evenp restnum)
-                            (error 'sb!int:simple-program-error
+                            (error 'simple-program-error
                                    :format-control "odd number of keyword arguments: ~S"
                                    :format-arguments (list rest)))
                           (when (>= i
@@ -714,10 +804,10 @@
                             (unless (or keys-checked-p
                                         allowp
                                         (getf rest :allow-other-keys nil))
-                              (loop for (k v) on rest by #'cddr
+                              (loop for (k) on rest by #'cddr
                                     unless (or (eq k :allow-other-keys)
                                                (member k keywords :test #'eq))
-                                    do (error 'sb!int:simple-program-error
+                                    do (error 'simple-program-error
                                               :format-control "unknown &KEY argument: ~A"
                                               :format-arguments (list k)))
                               (setq keys-checked-p t))
@@ -752,8 +842,9 @@
                           (return
                             (funcall body* new-env)))))))
               ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
-            (let ((current-path (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
-                  (source-info (and (boundp 'sb!c::*source-info*) sb!c::*source-info*)))
+            (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
+                  (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*)))
+              (declare (ignorable current-path source-info))
               (if envp
                   (eval-lambda (env)
                     (interpreted-lambda (current-path source-info) (&rest args)
@@ -765,35 +856,6 @@
                       (declare (dynamic-extent args))
                       (with-dynamic-extent-environment (new-env debug-info env varnum)
                         (apply #'handle-arguments new-env args))))))))))))
-
-(defun context->native-environment (context)
-  (let ((functions
-          (loop for (name . expander) in (context-collect context 'context-macros)
-                collect `(,name . (sb!c::macro . ,expander))))
-        (vars
-          (loop for (name . form) in (context-collect context 'context-symbol-macros)
-                collect `(,name . (sb!c::macro . ,form)))))
-    (sb!c::internal-make-lexenv functions vars nil nil nil nil nil nil nil nil nil)))
-
-(defun native-environment->context (lexenv)
-  (let ((context (make-context nil))
-        (macros%
-          (loop for (name . functional) in (sb!c::lexenv-vars lexenv)
-                when (eq (car functional) 'sb!c::macro)
-                collect `(,name . ,(cdr functional))))
-        (symbol-macros%
-          (loop for (name . form) in (sb!c::lexenv-funs lexenv)
-                when (eq (car form) 'sb!c::macro)
-                collect `(,name . ,(cdr form)))))
-    (setf (context-macros context) macros%)
-    (setf (context-symbol-macros context) symbol-macros%)
-    context))
-
-(defun globally-special-p (var)
-  (eq :special (sb!int:info :variable :kind var)))
-
-(defun globally-constant-p (var)
-  (eq :constant (sb!int:info :variable :kind var)))
 
 (defun assume-special (context var)
   (unless (or (globally-special-p var)
@@ -810,6 +872,7 @@
 (defun prepare-form (form context &optional (mode *mode*)
                                   &aux (*mode* :execute)
                                        (*form* form)
+                                       #+sbcl
                                        (sb!c::*current-path*
                                         (when (and (boundp 'sb!c::*source-paths*)
                                                    (or (sb!c::get-source-path form)
@@ -819,7 +882,7 @@
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
   (values
    (cond
-     ((sb!int:self-evaluating-p form)
+     ((self-evaluating-p form)
       (eval-lambda (env) (declare (ignore env)) form))
      (t
       (etypecase form
@@ -845,10 +908,11 @@
                  (case (first fun-form)
                    ((lambda)
                     (prepare-lambda (rest fun-form) context))
+                   #+sbcl
                    ((sb!int:named-lambda)
                     (prepare-lambda (cddr fun-form) context :name (cadr fun-form)))
                    (t
-                    (assert (sb!int:valid-function-name-p fun-form))
+                    #+sbcl (assert (sb!int:valid-function-name-p fun-form))
                     (prepare-function-ref fun-form context)))))))
            ((lambda)
             (prepare-lambda (rest form) context))
@@ -1164,8 +1228,10 @@
                 (eval-lambda (env)
                   (unwind-protect (funcall protected* env)
                     (funcall body* env))))))
+           #+sbcl
            ((sb!ext:truly-the)
             (prepare-form (third form) context))
+           #+sbcl
            ((sb!int:named-lambda)
             (prepare-lambda (cddr form) context :name (cadr form)))
            ((symbol-macrolet)
@@ -1175,11 +1241,11 @@
                                           (destructuring-bind (var macro-form) form
                                             (when (or (globally-special-p var)
                                                       (member var specials))
-                                              (error 'sb!int:simple-program-error
+                                              (error 'simple-program-error
                                                      :format-control "Attempt to bind a special variable with SYMBOL-MACROLET: ~S"
                                                      :format-arguments (list var)))
                                             (when (constantp var)
-                                              (error 'sb!int:simple-program-error
+                                              (error 'simple-program-error
                                                      :format-control "Attempt to bind a special variable with SYMBOL-MACROLET: ~S"
                                                      :format-arguments (list var)))
                                             (cons var macro-form)))
