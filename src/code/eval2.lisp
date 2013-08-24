@@ -339,6 +339,8 @@
   (defun self-evaluating-p (form)
     (sb!int:self-evaluating-p form))
 
+  (defun fun-name-block-name (fun-name)
+    (sb!int:fun-name-block-name fun-name))
   (defun parse-macrolet-binding-form (lambda-list whole body name env)
     (sb!kernel:parse-defmacro lambda-list
                               whole
@@ -382,32 +384,82 @@
 
 #-sbcl
 (progn
+  #-ccl
   (defmacro eval-lambda (lambda-list &body body)
     `(lambda ,lambda-list ,@body))
+  #-ccl
   (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
     (declare (ignore current-path source-info))
     `(lambda ,lambda-list ,@body))
 
+  #+ccl
+  (defmacro eval-lambda (lambda-list &body body)
+    `(ccl:nfunction eval-closure (lambda ,lambda-list ,@body)))
+  #+ccl
+  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
+    (declare (ignore current-path source-info))
+    `(ccl:nfunction interpreted-lambda (lambda ,lambda-list ,@body)))
+
   (defun self-evaluating-p (form)
     (not (or (symbolp form) (consp form))))
 
+  (defun fun-name-block-name (fun-name)
+    (etypecase fun-name
+      (symbol fun-name)
+      (cons   (second fun-name))))
   (defun parse-macrolet-binding-form (lambda-list whole body name env)
-    (error "NYI"))
+    (let* (;;(envtail (member '&environment lambda-list))
+           (envpos (position '&environment lambda-list))
+           ;;(env-var (second envtail))
+           whole?
+           env?)
+      (when envpos
+        (psetq env?        (elt lambda-list (1+ envpos))
+               lambda-list (append (subseq lambda-list 0 envpos)
+                                   (subseq lambda-list (+ envpos 2)))))
+      (when (eq (first lambda-list) '&whole)
+        (psetq whole?      (second lambda-list)
+               lambda-list (cddr lambda-list)))
+      `(block ,(fun-name-block-name name)
+         (destructuring-bind ,lambda-list ,whole
+           (let (,@(if env?
+                       `((,env? ,env))
+                       `())
+                 ,@(if whole?
+                       `((,whole? ,whole))
+                       `()))
+             ,@body)))))
   (defun parse-lambda-list (lambda-list)
     ;; returns values:
     ;;
     ;;   (required optional restp rest keyp keys allowp auxp aux)
     ;;
-    (error "NYI"))
+    (multiple-value-bind (required optional rest? keys allowp aux keyp)
+        (alexandria::parse-ordinary-lambda-list lambda-list
+                                                :normalize nil
+                                                :allow-specializers nil)
+      (values required optional rest? rest? keyp keys allowp aux aux)))
 
-  (defun context->native-environment (context)
-    (error "NYI"))
-  (defun native-environment->context (lexenv)
-    (error "NYI"))
-  (defun globally-special-p (var)
-    (error "NYI"))
-  (defun globally-constant-p (var)
-    (error "NYI")))
+  #-ccl
+  (progn
+    (defun context->native-environment (context)
+      (error "NYI"))
+    (defun native-environment->context (lexenv)
+      (error "NYI"))
+    (defun globally-special-p (var)
+      (error "NYI"))
+    (defun globally-constant-p (var)
+      (error "NYI")))
+  #+ccl
+  (progn
+    (defun context->native-environment (context)
+      nil)
+    (defun native-environment->context (lexenv)
+      (error "NYI"))
+    (defun globally-special-p (var)
+      nil)
+    (defun globally-constant-p (var)
+      nil)))
 
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
@@ -630,13 +682,6 @@
               ,@body))
      (declare (dynamic-extent #',loop-var))
      (,loop-var ,@(mapcar #'second bindings))))
-
-#+sbcl
-(defun fun-name-block-name (fun-name)
-  (sb!int:fun-name-block-name fun-name))
-#-sbcl
-(defun fun-name-block-name (fun-name)
-  (error "NYI"))
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (lambda-form context &key (name nil namep))
@@ -1234,6 +1279,9 @@
            #+sbcl
            ((sb!int:named-lambda)
             (prepare-lambda (cddr form) context :name (cadr form)))
+           #+ccl
+           ((ccl:nfunction)
+            (prepare-lambda (cdaddr form) context :name (cadr form)))
            ((symbol-macrolet)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
