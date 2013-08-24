@@ -449,17 +449,18 @@
     (defun globally-special-p (var)
       (error "NYI"))
     (defun globally-constant-p (var)
-      (error "NYI")))
+      (constantp var)))
   #+ccl
   (progn
     (defun context->native-environment (context)
+      ;;FIXME
       nil)
     (defun native-environment->context (lexenv)
       (error "NYI"))
     (defun globally-special-p (var)
-      nil)
+      (ccl:proclaimed-special-p var))
     (defun globally-constant-p (var)
-      nil)))
+      (constantp var))))
 
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
