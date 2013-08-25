@@ -368,19 +368,6 @@
             (loop for (name . form) in (context-collect context 'context-symbol-macros)
                   collect `(,name . (sb!c::macro . ,form)))))
       (sb!c::internal-make-lexenv functions vars nil nil nil nil nil nil nil nil nil)))
-  (defun native-environment->context (lexenv)
-    (let ((context (make-context nil))
-          (macros%
-            (loop for (name . functional) in (sb!c::lexenv-vars lexenv)
-                  when (eq (car functional) 'sb!c::macro)
-                  collect `(,name . ,(cdr functional))))
-          (symbol-macros%
-            (loop for (name . form) in (sb!c::lexenv-funs lexenv)
-                  when (eq (car form) 'sb!c::macro)
-                  collect `(,name . ,(cdr form)))))
-      (setf (context-macros context) macros%)
-      (setf (context-symbol-macros context) symbol-macros%)
-      context))
   (defun globally-special-p (var)
     (eq :special (sb!int:info :variable :kind var)))
   (defun globally-constant-p (var)
@@ -452,8 +439,6 @@
   (progn
     (defun context->native-environment (context)
       (error "NYI"))
-    (defun native-environment->context (lexenv)
-      (error "NYI"))
     (defun globally-special-p (var)
       (error "NYI"))
     (defun globally-constant-p (var)
@@ -485,9 +470,6 @@
          ;;:declare ...
          )
         env))
-    (defun native-environment->context (lexenv)
-      (declare (ignore lexenv))
-      (error "NYI"))
     (defun globally-special-p (var)
       (ccl:proclaimed-special-p var))
     (defun globally-constant-p (var)
