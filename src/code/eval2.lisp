@@ -6,8 +6,11 @@
 
 (in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
 
+#+sbcl
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                   #+sbcl (sb!c::store-closure-debug-pointer 3)))
+                   (sb!c::store-closure-debug-pointer 3)))
+#+ccl
+(declaim (optimize (debug 3) (space 0) (speed 0) (safety 3) (compilation-speed 0)))
 
 (setf (find-class 'simple-program-error)
       #+sbcl (find-class 'sb!int:simple-program-error)
@@ -328,7 +331,8 @@
       (sb!int:named-lambda eval-closure ,lambda-list
         (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
         ,@body)))
-  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
+  (defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
+    (declare (ignore name))
     `(annotate-interpreted-lambda-with-source
       (sb!int:named-lambda interpreted-function ,lambda-list
         (declare (optimize sb!c::store-closure-debug-pointer))
@@ -388,17 +392,21 @@
   (defmacro eval-lambda (lambda-list &body body)
     `(lambda ,lambda-list ,@body))
   #-ccl
-  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
-    (declare (ignore current-path source-info))
+  (defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
+    (declare (ignore name current-path source-info))
     `(lambda ,lambda-list ,@body))
 
   #+ccl
   (defmacro eval-lambda (lambda-list &body body)
     `(ccl:nfunction eval-closure (lambda ,lambda-list ,@body)))
   #+ccl
-  (defmacro interpreted-lambda ((current-path source-info) lambda-list &body body)
+  (defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
     (declare (ignore current-path source-info))
-    `(ccl:nfunction interpreted-lambda (lambda ,lambda-list ,@body)))
+    `(let ((fn (lambda ,lambda-list ,@body)))
+       (if name
+           (ccl::lfun-name fn ',name)
+           (ccl::lfun-name fn 'interpreted-function))
+       fn))
 
   (defun self-evaluating-p (form)
     (not (or (symbolp form) (consp form))))
@@ -453,9 +461,32 @@
   #+ccl
   (progn
     (defun context->native-environment (context)
-      ;;FIXME
-      nil)
+      (let ((env (ccl::new-lexical-environment))
+            (macros
+              (loop for (name . expander) in (context-collect context 'context-macros)
+                    collect `(,name ,expander)))
+            (symbol-macros
+              (loop for (name . form) in (context-collect context 'context-symbol-macros)
+                    collect `(,name ,form))))
+        (ccl::augment-environment
+         env
+         :function (mapcan (lambda (lexical)
+                             (when (and (listp (lexical-name lexical))
+                                        (eq 'function (first (lexical-name lexical))))
+                               (list (second (lexical-name lexical)))))
+                           (context-collect context 'context-lexicals))
+         :variable (mapcan (lambda (lexical)
+                             (unless (and (listp (lexical-name lexical))
+                                          (eq 'function (first (lexical-name lexical))))
+                               (list (lexical-name lexical))))
+                           (context-collect context 'context-lexicals))
+         :macro macros
+         :symbol-macro symbol-macros
+         ;;:declare ...
+         )
+        env))
     (defun native-environment->context (lexenv)
+      (declare (ignore lexenv))
       (error "NYI"))
     (defun globally-special-p (var)
       (ccl:proclaimed-special-p var))
@@ -893,12 +924,12 @@
               (declare (ignorable current-path source-info))
               (if envp
                   (eval-lambda (env)
-                    (interpreted-lambda (current-path source-info) (&rest args)
+                    (interpreted-lambda (name current-path source-info) (&rest args)
                       (declare (dynamic-extent args))
                       (let ((new-env (make-environment debug-info env varnum)))
                         (apply #'handle-arguments new-env args))))
                   (eval-lambda (env)
-                    (interpreted-lambda (current-path source-info) (&rest args)
+                    (interpreted-lambda (name current-path source-info) (&rest args)
                       (declare (dynamic-extent args))
                       (with-dynamic-extent-environment (new-env debug-info env varnum)
                         (apply #'handle-arguments new-env args))))))))))))
@@ -959,6 +990,7 @@
                     (prepare-lambda (cddr fun-form) context :name (cadr fun-form)))
                    (t
                     #+sbcl (assert (sb!int:valid-function-name-p fun-form))
+                    #+ccl  (assert (ccl::valid-function-name-p fun-form))
                     (prepare-function-ref fun-form context)))))))
            ((lambda)
             (prepare-lambda (rest form) context))
