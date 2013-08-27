@@ -10,10 +10,6 @@
   (declare (ignore name current-path source-info))
   `(lambda ,lambda-list ,@body))
 
-(defun context-collect (context fn)
-  ;;dummy
-  (error "stub"))
-
 (defun self-evaluating-p (form)
   (not (or (symbolp form) (consp form))))
 

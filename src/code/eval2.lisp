@@ -9,68 +9,6 @@
 (defvar *mode* :not-compile-time)
 (defvar *form*)
 
-
-(defmacro specialize (var value possible-values &body body)
-  `(ecase ,value
-     ,@(loop for x in (cl:eval possible-values)
-             collect
-                `((,x) ,(cl:eval `(let ((,var ,x)) ,@body))))))
-
-(deftype eval-closure () `(function (environment) *))
-
-(defstruct (debug-record (:constructor
-                             make-debug-record
-                             (context &optional (lambda-list :none) function-name)))
-  (context nil :type context)
-  (lambda-list nil :type (or list (member :none)))
-  (function-name nil))
-
-(declaim (inline %make-environment))
-(defstruct (environment (:constructor %make-environment))
-  (debug-record nil :type debug-record)
-  (parent nil :type (or null environment))
-  (data nil :type simple-vector))
-
-(declaim (inline make-null-environment))
-(defun make-null-environment ()
-  (make-environment (make-debug-record (make-null-context)) nil 0))
-
-(declaim (inline make-environment))
-(defun make-environment (debug-record
-                         parent
-                         &optional (size 0)
-                         &aux (data
-                               (if (zerop (the fixnum size))
-                                   #()
-                                   (make-array (list size)))))
-  (%make-environment :debug-record debug-record :parent parent :data data))
-
-(defmacro with-dynamic-extent-environment ((var debug-record parent size) &body body)
-  (let ((data% (gensym))
-        (size% (gensym)))
-    `(let* ((,size% ,size)
-            (,data% (make-array (list ,size%)))
-            (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
-       (declare (type (mod #.(1+ +stack-max+)) ,size%)
-                ;; we must not allocate environment objects on the
-                ;; stack unless we can be sure that all child
-                ;; environments will also be allocated on the stack,
-                ;; but we can't really know that.
-                ;(dynamic-extent ,var)
-                (dynamic-extent ,data%))
-       ,@body)))
-
-(defstruct lexical
-  (name    nil :type (or symbol list))
-  (offset  nil :type fixnum)
-  (nesting nil :type fixnum))
-
-(defun make-env-lexical (name offset &optional (nesting -1))
-  (make-lexical :name name :offset offset :nesting nesting))
-
-(defun lexical-with-nesting (lexical nesting)
-  (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
-
 #+(or)
 (defun maybe-references-p/env (form vars env)
   ;; Use `(function ,name) for local functions.
@@ -120,67 +58,6 @@
        x)))
   nil)
 
-(defstruct (context (:constructor make-context (&optional parent)))
-  parent
-  (env-hop nil :type boolean)
-  (block-tags nil :type list)
-  (go-tags nil :type list)
-  (symbol-macros nil :type list)
-  (macros nil :type list)
-  (lexicals nil :type list)
-  (specials nil :type list))
-(defun make-null-context ()
-  (make-context nil))
-(defun context-add-block-tag (context block tag)
-  (let ((new-context (make-context context)))
-    (push (cons block tag) (context-block-tags new-context))
-    new-context))
-(defun context-block-tag (context block)
-  (let ((parent (context-parent context)))
-    (or (cdr (assoc (the symbol block) (context-block-tags context)))
-        (and parent (context-block-tag parent block)))))
-(defun context-add-go-tags (context new-go-tags catch-tag)
-  (let ((new-context (make-context context)))
-    (dolist (new-go-tag new-go-tags)
-      (push (cons new-go-tag catch-tag)
-            (context-go-tags new-context)))
-    new-context))
-(defun context-collect (context f)
-  (let ((parent (context-parent context)))
-    (append (funcall f context) (and parent (context-collect parent f)))))
-(defun context-find-go-tag (context go-tag)
-  (let ((parent (context-parent context)))
-    (or (cdr (assoc (the atom go-tag) (context-go-tags context)))
-        (and parent (context-find-go-tag parent go-tag)))))
-(defun context-find-symbol-macro (context symmac)
-  (let ((parent (context-parent context)))
-    (and (not (member symmac
-                      (context-lexicals context)
-                      :test #'equal
-                      :key #'lexical-name))
-         (not (member symmac (context-specials context) :test #'equal))
-         (or (cdr (assoc (the symbol symmac) (context-symbol-macros context)))
-             (and parent (context-find-symbol-macro parent symmac))))))
-(defun context-find-macro (context mac)
-  (let ((parent (context-parent context)))
-    (and (not (member `(function ,mac)
-                      (context-lexicals context)
-                      :test #'equal
-                      :key #'lexical-name))
-         (or (cdr (assoc (the (or symbol list) mac)
-                         (context-macros context)
-                         :test #'equal))
-             (and parent (context-find-macro parent mac))))))
-(defun context-add-symbol-macros (context bindings)
-  (let ((new-context (make-context context)))
-    (setf (context-symbol-macros new-context)
-          (append bindings (context-symbol-macros new-context)))
-    new-context))
-(defun context-add-macros (context bindings)
-  (let ((new-context (make-context context)))
-    (setf (context-macros new-context)
-          (append bindings (context-macros new-context)))
-    new-context))
 (defun parse-tagbody-tags-and-bodies (forms)
   (let ((next-form (gensym))
         (finishp nil))
@@ -195,76 +72,6 @@
                                           until (atom current-form)
                                           collect current-form)))
                  (cons tag current-forms))))))
-(defun context-var-symbol-macro-p (context var)
-  (and (not (find var (context-specials context) :test #'equal))
-       (not (find var (context-lexicals context) :key #'lexical-name :test #'equal))
-       (or (find var (context-symbol-macros context) :key #'car :test #'equal)
-           (and (context-parent context)
-                (context-var-symbol-macro-p (context-parent context) var)))))
-(defun context-var-lexical-p (context var)
-  (and (not (find var (context-specials context) :test #'equal))
-       (not (find var (context-symbol-macros context) :key #'car :test #'equal))
-       (or (find var (context-lexicals context) :key #'lexical-name :test #'equal)
-           (and (context-parent context)
-                (context-var-lexical-p (context-parent context) var)))))
-(defun context-var-special-p (context var)
-  (and (not (find var (context-lexicals context) :key #'lexical-name :test #'equal))
-       (not (find var (context-symbol-macros context) :key #'car :test #'equal))
-       (or (find var (context-specials context) :test #'equal)
-           (and (context-parent context)
-                (context-var-special-p (context-parent context) var)))))
-(defun context-add-env-lexicals (context vars)
-  ;; open a new variable context
-  (let ((new-context (make-context context)))
-    (setf (context-env-hop new-context) t)
-    (setf (context-lexicals new-context)
-          (loop for i fixnum from 0
-                for v in vars
-                collect (make-env-lexical v i)))
-    new-context))
-(defun make-lexical-context (context)
-  (let ((new-context (make-context context)))
-    (setf (context-env-hop new-context) t)
-    new-context))
-(defun context-add-env-lexical! (context var)
-  (push (make-env-lexical var (length (context-lexicals context)))
-        (context-lexicals context))
-  (values))
-(defun context-add-specials (context vars)
-  (let ((new-context (make-context context)))
-    (setf (context-specials new-context) vars)
-    new-context))
-(defun context-add-special! (context var)
-  (push var (context-specials context))
-  (values))
-(defun context-add-env-functions (context fs)
-  (context-add-env-lexicals context (mapcar (lambda (x) `(function ,x)) fs)))
-(defun context-find-lexical (context var)
-  (loop with env-level = 0
-        until (null context)
-        for record = (find var
-                           (context-lexicals context)
-                           :key #'lexical-name
-                           :test #'equal)
-        when record
-          do (return
-               (lexical-with-nesting record env-level))
-        when (context-env-hop context)
-          do (incf env-level)
-        do (setq context (context-parent context))))
-
-(declaim (inline environment-value))
-(defun environment-value (env nesting offset)
-  (dotimes (i (the fixnum nesting))
-    (setq env (environment-parent env)))
-  (svref (environment-data env) offset))
-
-(declaim (inline (setf environment-value)))
-(defun (setf environment-value) (val env nesting offset)
-  (dotimes (i (the fixnum nesting))
-    (setq env (environment-parent env)))
-  (setf (svref (environment-data env) offset) val))
-
 
 (declaim (ftype (function (symbol context) eval-closure) prepare-ref))
 (defun prepare-ref (var context)
@@ -300,12 +107,6 @@
   (when (eq (first declaration) 'special)
     (rest declaration)))
 
-(defmacro with-parsed-body ((forms-var specials-var) exprs &body body)
-  (let ((decls (gensym)))
-    `(multiple-value-bind (,decls ,forms-var) (body-decls&forms ,exprs)
-       (let ((,specials-var (mapcan #'decl-specials ,decls)))
-         ,@body))))
-
 
 (declaim (ftype (function ((or symbol list) context) eval-closure) prepare-function-ref))
 (defun prepare-function-ref (function-name context)
@@ -325,15 +126,6 @@
       (eval-lambda (env)
         (declare (ignore env))
         (fdefinition function-name))))
-
-
-(declaim (ftype (function (context (or symbol list)) *) context-find-function))
-(defun context-find-function (context f)
-  (context-find-lexical context `(function ,f)))
-
-(declaim (ftype (function (context (or symbol list)) *) local-function-p))
-(defun local-function-p (context f)
-  (context-find-function context f))
 
 (declaim (ftype (function () eval-closure) prepare-nil))
 (defun prepare-nil ()
@@ -467,25 +259,9 @@
                                                    env)))
       (prepare-lambda `((,whole ,env) ,body-form)
                       context
-                      ;;:name name   ;unnecessary because of PARSE-DEFMACRO
+                      ;;:name name ;unnecessary because of
+                                   ;PARSE-MACROLET-BINDING-FORM
                       ))))
-
-(defmacro incff (x &optional (num 1))
-  (let ((old-x (gensym)))
-    `(let ((,old-x ,x))
-       (incf ,x ,num)
-       ,old-x)))
-
-(defmacro nlet (loop-var bindings &body body)
-  `(labels ((,loop-var ,(mapcar #'first bindings)
-              ,@body))
-     (,loop-var ,@(mapcar #'second bindings))))
-
-(defmacro dnlet (loop-var bindings &body body)
-  `(labels ((,loop-var ,(mapcar #'first bindings)
-              ,@body))
-     (declare (dynamic-extent #',loop-var))
-     (,loop-var ,@(mapcar #'second bindings))))
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (lambda-form context &key (name nil namep))

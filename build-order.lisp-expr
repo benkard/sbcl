@@ -652,8 +652,10 @@
  ;; files which depend in some way (directly or indirectly) on stuff
  ;; compiled as part of the compiler
 
- ;;#!+sb-eval
- ;;("src/code/eval2-generic" :not-host)
+ #!+sb-eval
+ ("src/code/eval2-macros"  :not-host)
+ #!+sb-eval
+ ("src/code/eval2-types"   :not-host)
  #!+sb-eval
  ("src/code/eval2-sbcl"    :not-host)
  #!+sb-eval
