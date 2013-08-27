@@ -2903,6 +2903,7 @@ structure representations"
       :name "SB!EVAL2"
       :doc "internal: the evaluator implementation used to execute code without compiling it."
       :use ("CL")
+      :import-from (("SB!C" "SIMPLE-PROGRAM-ERROR"))
       :export ("PREPARE-FORM"
                "MAKE-NULL-ENVIRONMENT"
                "MAKE-NULL-CONTEXT"

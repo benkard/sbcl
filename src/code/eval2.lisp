@@ -4,59 +4,13 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(defconstant +stack-max+ 8)
-
 (defvar *mode* :not-compile-time)
 (defvar *form*)
 
-#+(or)
-(defun maybe-references-p/env (form vars env)
-  ;; Use `(function ,name) for local functions.
-  (let ((sb!walker::*walk-form-expand-macros-p* t))
-    (sb!walker:walk-form
-     form
-     env
-     (lambda (x ctx env)
-       (declare (ignore ctx))
-       (when (and (member x vars :test #'equal)
-                  (not (sb!walker:var-special-p x env))
-                  (not (sb!walker:var-lexical-p x env)))
-         (return-from maybe-references-p/env t))
-       x)))
-  nil)
-
 (defun maybe-closes-over-p (context form vars)
-  (handler-case
-      (maybe-closes-over-p/env form vars (context->native-environment context))
-    (serious-condition () t)))
-
-#+(or)
-(defun maybe-closes-over-p/env (form vars env)
-  (let ((sb!walker::*walk-form-expand-macros-p* t))
-    (sb!walker:walk-form
-     form
-     env
-     (lambda (x ctx env)
-       (declare (ignore ctx))
-       (typecase x
-         (cons
-          (destructuring-bind (a . b) x
-            (case a
-              ((lambda sb!int:named-lambda)
-               (when (maybe-references-p/env form vars env)
-                 (return-from maybe-closes-over-p/env t)))
-              ((flet labels)
-               (typecase b
-                 (cons
-                  (destructuring-bind (bindings . rest) form
-                    (when (or (maybe-references-p/env bindings vars env)
-                              (maybe-closes-over-p/env rest vars env))
-                      (return-from maybe-closes-over-p/env t))))
-                 (t
-                  (when (maybe-closes-over-p/env b vars env)
-                    (return-from maybe-closes-over-p/env t)))))))))
-       x)))
-  nil)
+  (declare (ignore context form vars))
+  ;; FIXME
+  t)
 
 (defun parse-tagbody-tags-and-bodies (forms)
   (let ((next-form (gensym))

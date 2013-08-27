@@ -3,9 +3,6 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(setf (find-class 'simple-program-error)
-      (find-class 'sb!int:simple-program-error))
-
 (defvar *source-paths* (make-hash-table :weakness :key :test #'eq))
 (defvar *source-info* (make-hash-table :weakness :key :test #'eq))
 (defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
@@ -30,13 +27,6 @@
   (setf (gethash eval-closure *source-info*) val))
 (defun (setf source-location) (val eval-closure)
   (setf (gethash eval-closure *source-locations*) val))
-
-(defun find-class (class)
-  ;;dummy
-  (error "stub"))
-(defun (setf find-class) (class)
-  ;;dummy
-  (error "stub"))
 
 
 (defun annotate-lambda-with-source (closure)

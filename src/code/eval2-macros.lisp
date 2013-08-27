@@ -1,8 +1,8 @@
-;;#!+sbcl
-;;(in-package "SB!EVAL2")
-;;#!-sbcl
-(in-package "SB-EVAL2")
+(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
 
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +stack-max+ 8))
 
 (defmacro with-dynamic-extent-environment ((var debug-record parent size) &body body)
   (let ((data% (gensym))
