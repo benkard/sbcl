@@ -118,10 +118,10 @@ children of CONTEXT can be stack-allocated."
                (eval-lambda ()
                  (funcall (the function (environment-value *env* nesting offset))
                           ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) *env*)))))))
+                                  collect `(funcall (the eval-closure ,var))))))))
         (eval-lambda ()
           (apply (the function (environment-value *env* nesting offset))
-                 (mapcar (lambda (x) (funcall (the eval-closure x) *env*)) args*))))))
+                 (mapcar (lambda (x) (funcall (the eval-closure x))) args*))))))
 
 (declaim (ftype (function ((or symbol list) list context) eval-closure) prepare-global-call))
 (defun prepare-global-call (f args context)
@@ -140,20 +140,20 @@ children of CONTEXT can be stack-allocated."
                                      (error 'undefined-function :name f))
                           #-sbcl f
                           ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) *env*)))))))
+                                  collect `(funcall (the eval-closure ,var))))))))
         (eval-lambda ()
           (apply #+sbcl (or (sb!c::fdefn-fun f*)
                             (error 'undefined-function :name f))
                  #-sbcl f
-                 (mapcar (lambda (x) (funcall (the eval-closure x) *env*))
+                 (mapcar (lambda (x) (funcall (the eval-closure x)))
                          args*))))))
 
 (declaim (ftype (function (eval-closure list context) eval-closure) prepare-direct-call))
 (defun prepare-direct-call (f args context)
   (let ((args* (mapcar (lambda (form) (prepare-form form context)) args)))
     (eval-lambda ()
-      (apply (the (or symbol function) (funcall (the eval-closure f) *env*))
-             (mapcar (lambda (x) (funcall (the eval-closure x) *env*)) args*)))))
+      (apply (the (or symbol function) (funcall (the eval-closure f)))
+             (mapcar (lambda (x) (funcall (the eval-closure x))) args*)))))
 
 (declaim (ftype (function (list context &optional symbol)
                           (values eval-closure &rest nil))
@@ -166,8 +166,8 @@ children of CONTEXT can be stack-allocated."
               (last-form* (first (last body*))))
           (eval-lambda ()
             (dolist (form* forms*)
-              (funcall (the eval-closure form*) *env*))
-            (funcall (the eval-closure last-form*) *env*))))))
+              (funcall (the eval-closure form*)))
+            (funcall (the eval-closure last-form*)))))))
 
 (defun lambda-binding-vars (entry kind)
   (check-type kind (member :aux :optional :key :required))
@@ -438,13 +438,13 @@ children of CONTEXT can be stack-allocated."
                     (let ((env *env*))
                       (interpreted-lambda (name current-path source-info) (&rest args)
                         (declare (dynamic-extent args))
-                        (with-environment (make-environment debug-info *env* varnum)
+                        (with-environment (make-environment debug-info env varnum)
                           (apply #'handle-arguments args)))))
                   (eval-lambda ()
                     (let ((env *env*))
                       (interpreted-lambda (name current-path source-info) (&rest args)
                         (declare (dynamic-extent args))
-                        (with-dynamic-extent-environment (*env* debug-info *env* varnum)
+                        (with-dynamic-extent-environment (*env* debug-info env varnum)
                           (apply #'handle-arguments args)))))))))))))
 
 (defun assume-special (context var)
@@ -683,7 +683,7 @@ children of CONTEXT can be stack-allocated."
                               (progv
                                   srav-laiceps
                                   slav-laiceps
-                                (funcall body* new-env)))))
+                                (funcall body*)))))
                         (eval-lambda ()
                           (with-dynamic-extent-environment (new-env debug-info *env* varnum)
                             (let ((slav-laiceps (list)))
@@ -857,11 +857,11 @@ children of CONTEXT can be stack-allocated."
               (with-parsed-body (body specials) exprs
                 (let ((bindings (mapcar (lambda (form)
                                           (cons (first form)
-                                                (funcall
-                                                 (prepare-macro-lambda (first form)
-                                                                       (rest form)
-                                                                       context)
-                                                 (make-null-environment))))
+                                                (with-environment (make-null-environment)
+                                                  (funcall
+                                                   (prepare-macro-lambda (first form)
+                                                                         (rest form)
+                                                                         context)))))
                                         bindings)))
                   (prepare-progn body
                                  (context-add-specials
@@ -923,14 +923,15 @@ children of CONTEXT can be stack-allocated."
    t))
 
 #+(or)
-(defun eval (form)
-  (funcall (prepare-form form (make-null-context) :execute)
-           (make-null-environment)))
+(defun eval (form &optional (env (make-null-environment)))
+  (with-environment (env)
+    (funcall (prepare-form form (make-null-context) :execute))))
 
 #+(or)
-(defun eval-tlf (form)
-  (funcall (prepare-form form (make-null-context) :not-compile-time)
-           (make-null-environment)))
+(defun eval-tlf (form &optional (env (make-null-environment)))
+  (with-environment env
+    (funcall (prepare-form form (make-null-context) :not-compile-time))))
+
 
 #+(or)
 (defun load (filename)
@@ -943,22 +944,22 @@ children of CONTEXT can be stack-allocated."
 
 
 #+(or)
-(funcall (prepare-form '(funcall
-                         (funcall
-                          (lambda (x)
-                            (lambda (y z)
-                              (setq x (+ x (* y z)))
-                              x))
-                          3)
-                         5 7)
-                       (make-null-context))
-         (make-null-environment))
+(with-environment (make-null-environment)
+  (funcall (prepare-form '(funcall
+                           (funcall
+                            (lambda (x)
+                              (lambda (y z)
+                                (setq x (+ x (* y z)))
+                                x))
+                            3)
+                           5 7)
+                         (make-null-context))))
 
 #+(or)
-(funcall (funcall
-          (prepare-form
-           '(lambda (a b &optional c (d 10 dp) &rest r &key e (f 12 fp) (g 12 gp) &aux (h 1) (i 2))
-             (list a b c d dp e f fp g gp r h i)))
-          (make-null-environment))
-         1 2 3 4 :f 5 :e 6)
+(with-environment (make-null-environment)
+  (funcall (funcall
+            (prepare-form
+             '(lambda (a b &optional c (d 10 dp) &rest r &key e (f 12 fp) (g 12 gp) &aux (h 1) (i 2))
+               (list a b c d dp e f fp g gp r h i))))
+           1 2 3 4 :f 5 :e 6))
 ;; => (1 2 3 4 T 6 5 T 12 NIL (:F 5 :E 6) 1 2)
