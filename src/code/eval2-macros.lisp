@@ -4,6 +4,9 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant +stack-max+ 8))
 
+(defmacro with-environment (env &body body)
+  `(call-with-environment env (lambda () ,@body)))
+
 (defmacro with-dynamic-extent-environment ((var debug-record parent size) &body body)
   (let ((data% (gensym))
         (size% (gensym)))

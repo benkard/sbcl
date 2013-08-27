@@ -6,6 +6,12 @@
 
 (defvar *mode* :not-compile-time)
 (defvar *form*)
+(defvar *env*)
+
+(declaim (inline call-with-environment))
+(defun call-with-environment (env thunk)
+  (let ((*env* env))
+    (funcall thunk)))
 
 (defun maybe-closes-p (context form)
   "Check whether FORM potentially closes over anything not bound in CONTEXT.
@@ -48,16 +54,14 @@ children of CONTEXT can be stack-allocated."
       (let* ((lexical (context-find-lexical context var))
              (nesting (lexical-nesting lexical))
              (offset (lexical-offset lexical)))
-        (eval-lambda (env)
-          (environment-value env nesting offset)))
+        (eval-lambda ()
+          (environment-value *env* nesting offset)))
       (if (globally-constant-p var)
-          (eval-lambda (env)
-            (declare (ignore env))
+          (eval-lambda ()
             (symbol-value var))
           (progn
             (assume-special context var)
-            (eval-lambda (env)
-              (declare (ignore env))
+            (eval-lambda ()
               (unless (boundp var)
                 (error 'unbound-variable :name var))
               (symbol-value var))))))
@@ -83,22 +87,20 @@ children of CONTEXT can be stack-allocated."
       (let* ((lexical (context-find-lexical context `(function ,function-name)))
              (nesting (lexical-nesting lexical))
              (offset  (lexical-offset lexical)))
-        (eval-lambda (env)
-          (environment-value env nesting offset)))
+        (eval-lambda ()
+          (environment-value *env* nesting offset)))
       #+sbcl
       (let ((f* (sb!c::fdefinition-object function-name t)))
-        (eval-lambda (env)
-          (declare (ignore env))
+        (eval-lambda ()
           (or (sb!c::fdefn-fun f*)
               (error 'undefined-function :name function-name))))
       #-sbcl
-      (eval-lambda (env)
-        (declare (ignore env))
+      (eval-lambda ()
         (fdefinition function-name))))
 
 (declaim (ftype (function () eval-closure) prepare-nil))
 (defun prepare-nil ()
-  (eval-lambda (env) (declare (ignore env))))
+  (eval-lambda () nil))
 
 (declaim (ftype (function ((or symbol list) list context) eval-closure) prepare-local-call))
 (defun prepare-local-call (f args context)
@@ -113,13 +115,13 @@ children of CONTEXT can be stack-allocated."
             `(let ,(loop for var in argvars
                          for i from 0 below m%
                          collect `(,var (nth ,i args*)))
-               (eval-lambda (env)
-                 (funcall (the function (environment-value env nesting offset))
+               (eval-lambda ()
+                 (funcall (the function (environment-value *env* nesting offset))
                           ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) env)))))))
-        (eval-lambda (env)
-          (apply (the function (environment-value env nesting offset))
-                 (mapcar (lambda (x) (funcall (the eval-closure x) env)) args*))))))
+                                  collect `(funcall (the eval-closure ,var) *env*)))))))
+        (eval-lambda ()
+          (apply (the function (environment-value *env* nesting offset))
+                 (mapcar (lambda (x) (funcall (the eval-closure x) *env*)) args*))))))
 
 (declaim (ftype (function ((or symbol list) list context) eval-closure) prepare-global-call))
 (defun prepare-global-call (f args context)
@@ -133,26 +135,25 @@ children of CONTEXT can be stack-allocated."
             `(let ,(loop for var in argvars
                          for i from 0 below m%
                          collect `(,var (nth ,i args*)))
-               (eval-lambda (env)
-                 (declare (ignorable env))
+               (eval-lambda ()
                  (funcall #+sbcl (or (sb!c::fdefn-fun f*)
                                      (error 'undefined-function :name f))
                           #-sbcl f
                           ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) env)))))))
-        (eval-lambda (env)
+                                  collect `(funcall (the eval-closure ,var) *env*)))))))
+        (eval-lambda ()
           (apply #+sbcl (or (sb!c::fdefn-fun f*)
                             (error 'undefined-function :name f))
                  #-sbcl f
-                 (mapcar (lambda (x) (funcall (the eval-closure x) env))
+                 (mapcar (lambda (x) (funcall (the eval-closure x) *env*))
                          args*))))))
 
 (declaim (ftype (function (eval-closure list context) eval-closure) prepare-direct-call))
 (defun prepare-direct-call (f args context)
   (let ((args* (mapcar (lambda (form) (prepare-form form context)) args)))
-    (eval-lambda (env)
-      (apply (the (or symbol function) (funcall (the eval-closure f) env))
-             (mapcar (lambda (x) (funcall (the eval-closure x) env)) args*)))))
+    (eval-lambda ()
+      (apply (the (or symbol function) (funcall (the eval-closure f) *env*))
+             (mapcar (lambda (x) (funcall (the eval-closure x) *env*)) args*)))))
 
 (declaim (ftype (function (list context &optional symbol)
                           (values eval-closure &rest nil))
@@ -163,10 +164,10 @@ children of CONTEXT can be stack-allocated."
         (prepare-nil)
         (let ((forms* (butlast body*))
               (last-form* (first (last body*))))
-          (eval-lambda (env)
+          (eval-lambda ()
             (dolist (form* forms*)
-              (funcall (the eval-closure form*) env))
-            (funcall (the eval-closure last-form*) env))))))
+              (funcall (the eval-closure form*) *env*))
+            (funcall (the eval-closure last-form*) *env*))))))
 
 (defun lambda-binding-vars (entry kind)
   (check-type kind (member :aux :optional :key :required))
@@ -293,7 +294,7 @@ children of CONTEXT can be stack-allocated."
                (unbound (gensym)))
           (setq varspecs (nreverse varspecs))
           (flet
-              ((handle-arguments (new-env &rest args)
+              ((handle-arguments (&rest args)
                  (declare (dynamic-extent args))
                  ;; All this ELT and LENGTH stuff is not as
                  ;; inefficient as it looks.  SBCL transforms
@@ -325,7 +326,7 @@ children of CONTEXT can be stack-allocated."
                                 (let ((varspec (pop my-varspecs)))
                                   (if (eq varspec :lexical)
                                       (setf
-                                       (environment-value new-env 0 (incff vari))
+                                       (environment-value *env* 0 (incff vari))
                                        value)
                                       (let ((var (cdr varspec)))
                                         (assert (eq :special
@@ -359,8 +360,7 @@ children of CONTEXT can be stack-allocated."
                                                      optional-num)))
                             (go rest))
                           (let ((val* (pop my-default-values*)))
-                            (push-args (funcall (the eval-closure val*)
-                                                new-env)
+                            (push-args (funcall (the eval-closure val*))
                                        nil))
                           (go missing-optionals)
                         rest
@@ -406,7 +406,7 @@ children of CONTEXT can be stack-allocated."
                                  (x    (getf rest key unbound)))
                             (if (eq unbound x)
                                 (progn
-                                  (push-args (funcall (the eval-closure val*) new-env)
+                                  (push-args (funcall (the eval-closure val*))
                                              nil))
                                 (progn
                                   (push-args x t))))
@@ -422,29 +422,30 @@ children of CONTEXT can be stack-allocated."
                                                aux-num))))
                             (go final-call))
                           (let ((val* (pop my-default-values*)))
-                            (push-args (funcall (the eval-closure val*)
-                                                new-env)))
+                            (push-args (funcall (the eval-closure val*))))
                           (go aux)
                         final-call
                           (assert (null my-default-values*)
                                   (my-default-values*))
                           (return
-                            (funcall body* new-env)))))))
+                            (funcall body*)))))))
               ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
             (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
                   (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*)))
               (declare (ignorable current-path source-info))
               (if envp
-                  (eval-lambda (env)
-                    (interpreted-lambda (name current-path source-info) (&rest args)
-                      (declare (dynamic-extent args))
-                      (let ((new-env (make-environment debug-info env varnum)))
-                        (apply #'handle-arguments new-env args))))
-                  (eval-lambda (env)
-                    (interpreted-lambda (name current-path source-info) (&rest args)
-                      (declare (dynamic-extent args))
-                      (with-dynamic-extent-environment (new-env debug-info env varnum)
-                        (apply #'handle-arguments new-env args))))))))))))
+                  (eval-lambda ()
+                    (let ((env *env*))
+                      (interpreted-lambda (name current-path source-info) (&rest args)
+                        (declare (dynamic-extent args))
+                        (with-environment (make-environment debug-info *env* varnum)
+                          (apply #'handle-arguments args)))))
+                  (eval-lambda ()
+                    (let ((env *env*))
+                      (interpreted-lambda (name current-path source-info) (&rest args)
+                        (declare (dynamic-extent args))
+                        (with-dynamic-extent-environment (*env* debug-info *env* varnum)
+                          (apply #'handle-arguments args)))))))))))))
 
 (defun assume-special (context var)
   (unless (or (globally-special-p var)
@@ -472,7 +473,7 @@ children of CONTEXT can be stack-allocated."
   (values
    (cond
      ((self-evaluating-p form)
-      (eval-lambda (env) (declare (ignore env)) form))
+      (eval-lambda () form))
      (t
       (etypecase form
         (symbol
@@ -487,7 +488,7 @@ children of CONTEXT can be stack-allocated."
               (let ((a* (prepare-form a context))
                     (b* (prepare-form b context))
                     (c* (prepare-form c context)))
-                (eval-lambda (env) (if (funcall a* env) (funcall b* env) (funcall c* env))))))
+                (eval-lambda () (if (funcall a*) (funcall b*) (funcall c*))))))
            ((function)
             (let ((fun-form (second form)))
               (etypecase fun-form
@@ -524,15 +525,15 @@ children of CONTEXT can be stack-allocated."
                                       (prevent-constant-modification var)
                                       :special))
                             collect (prepare-form valform context))))
-                (eval-lambda (env)
+                (eval-lambda ()
                   (loop for (var info val*) on bindings by #'cdddr
-                        for value = (funcall (the eval-closure val*) env)
+                        for value = (funcall (the eval-closure val*))
                         for result =
                            (etypecase info
                              (function ;symbol macro setter
-                              (funcall info env))
+                              (funcall info))
                              (lexical
-                              (setf (environment-value env
+                              (setf (environment-value *env*
                                                        (lexical-nesting info)
                                                        (lexical-offset info))
                                     value))
@@ -543,16 +544,16 @@ children of CONTEXT can be stack-allocated."
             (destructuring-bind (tag &body body) (rest form)
               (let ((tag* (prepare-form tag context))
                     (body* (prepare-progn body context)))
-                (eval-lambda (env)
-                  (catch (funcall tag* env)
-                    (funcall body* env))))))
+                (eval-lambda ()
+                  (catch (funcall tag*)
+                    (funcall body*))))))
            ((block)
             (destructuring-bind (name &body body) (rest form)
               (let* ((tag (gensym (concatenate 'string "BLOCK-" (symbol-name name))))
                      (body* (prepare-progn body (context-add-block-tag context name tag))))
-                (eval-lambda (env)
+                (eval-lambda ()
                   (catch tag
-                    (funcall body* env))))))
+                    (funcall body*))))))
            ((declare)
             (warn "DECLARE in form context.")
             (prepare-nil))
@@ -602,13 +603,14 @@ children of CONTEXT can be stack-allocated."
                        (body* (prepare-progn body
                                              (context-add-specials new-context
                                                                    specials))))
-                  (eval-lambda (env)
-                    (let ((new-env (make-environment debug-info env n)))
+                  (eval-lambda ()
+                    (let ((new-env (make-environment debug-info *env* n)))
                       (loop for i from 0 to n
                             for f in functions
                             do (setf (environment-value new-env 0 i)
-                                     (funcall (the eval-closure f) env)))
-                      (funcall body* new-env)))))))
+                                     (funcall (the eval-closure f))))
+                      (with-environment new-env
+                        (funcall body*))))))))
            ((labels)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
@@ -625,13 +627,13 @@ children of CONTEXT can be stack-allocated."
                        (n (length functions))
                        (body* (prepare-progn body (context-add-specials new-context
                                                                         specials))))
-                  (eval-lambda (env)
-                    (let ((new-env (make-environment debug-info env n)))
+                  (eval-lambda ()
+                    (with-environment (make-environment debug-info *env* n)
                       (loop for i from 0 to n
                             for f in functions
-                            do (setf (environment-value new-env 0 i)
-                                     (funcall (the eval-closure f) new-env)))
-                      (funcall body* new-env)))))))
+                            do (setf (environment-value *env* 0 i)
+                                     (funcall (the eval-closure f))))
+                      (funcall body*)))))))
            ((let)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
@@ -665,38 +667,40 @@ children of CONTEXT can be stack-allocated."
                                                 new-context
                                                 specials))))
                     (if envp
-                        (eval-lambda (env)
-                          (let ((new-env (make-environment debug-info env varnum))
+                        (eval-lambda ()
+                          (let ((new-env (make-environment debug-info *env* varnum))
                                 (slav-laiceps (list)))
                             (loop with i fixnum = 0
                                   for (specialp . val*) in values*
                                   when specialp
-                                  do (push (funcall (the eval-closure val*) env)
+                                  do (push (funcall (the eval-closure val*))
                                            slav-laiceps)
                                   else
                                   do (setf (environment-value new-env 0 i)
-                                           (funcall (the eval-closure val*) env))
+                                           (funcall (the eval-closure val*)))
                                      (incf i))
-                            (progv
-                                srav-laiceps
-                                slav-laiceps
-                              (funcall body* new-env))))
-                        (eval-lambda (env)
-                          (with-dynamic-extent-environment (new-env debug-info env varnum)
+                            (with-environment new-env
+                              (progv
+                                  srav-laiceps
+                                  slav-laiceps
+                                (funcall body* new-env)))))
+                        (eval-lambda ()
+                          (with-dynamic-extent-environment (new-env debug-info *env* varnum)
                             (let ((slav-laiceps (list)))
                               (loop with i fixnum = 0
                                     for (specialp . val*) in values*
                                     when specialp
-                                    do (push (funcall (the eval-closure val*) env)
+                                    do (push (funcall (the eval-closure val*))
                                              slav-laiceps)
                                     else
                                     do (setf (environment-value new-env 0 i)
-                                             (funcall (the eval-closure val*) env))
+                                             (funcall (the eval-closure val*)))
                                        (incf i))
-                              (progv
-                                  srav-laiceps
-                                  slav-laiceps
-                                (funcall body* new-env)))))))))))
+                              (with-environment new-env
+                                (progv
+                                    srav-laiceps
+                                    slav-laiceps
+                                  (funcall body*))))))))))))
            ((let*)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
@@ -727,20 +731,20 @@ children of CONTEXT can be stack-allocated."
             (destructuring-bind (f &rest argforms) (rest form)
               (let ((f* (prepare-form f context))
                     (argforms* (mapcar (lambda (x) (prepare-form x context)) argforms)))
-                (eval-lambda (env)
-                  (apply (funcall (the eval-closure f*) env)
+                (eval-lambda ()
+                  (apply (funcall (the eval-closure f*))
                          (mapcan (lambda (arg)
                                    (multiple-value-list
-                                    (funcall (the eval-closure arg) env)))
+                                    (funcall (the eval-closure arg))))
                                  argforms*))))))
            ((multiple-value-prog1)
             (destructuring-bind (values-form &body body) (rest form)
               (let ((values-form* (prepare-form values-form context))
                     (body*        (prepare-progn body context)))
-                (eval-lambda (env)
+                (eval-lambda ()
                   (multiple-value-prog1
-                      (funcall values-form* env)
-                    (funcall body* env))))))
+                      (funcall values-form*)
+                    (funcall body*))))))
            ((multiple-value-setq)
             (destructuring-bind (vars values-form) (rest form)
               (if vars
@@ -770,9 +774,9 @@ children of CONTEXT can be stack-allocated."
                                       specials))
                        (debug-info   (make-debug-record new-context))
                        (body*        (prepare-progn body new-context)))
-                  (eval-lambda (env)
-                    (let* ((new-env (make-environment debug-info env nlexicals))
-                           (values  (multiple-value-list (funcall value-form* env))))
+                  (eval-lambda ()
+                    (let* ((new-env (make-environment debug-info *env* nlexicals))
+                           (values  (multiple-value-list (funcall value-form*))))
                       (progv our-specials '()
                         (loop with i = 0
                               for spec in varspecs
@@ -781,7 +785,8 @@ children of CONTEXT can be stack-allocated."
                                    (incf i)
                               else
                                 do (setf (symbol-value (cdr spec)) (pop values)))
-                        (funcall body* new-env))))))))
+                        (with-environment new-env
+                          (funcall body*)))))))))
            ((progn)
             (prepare-progn (rest form) context mode))
            ((progv)
@@ -789,35 +794,34 @@ children of CONTEXT can be stack-allocated."
               (let ((vals* (prepare-form vals context))
                     (vars* (prepare-form vars context))
                     (body* (prepare-progn body context)))
-                (eval-lambda (env)
-                  (progv (funcall vals* env) (funcall vars* env)
-                    (funcall body* env))))))
+                (eval-lambda ()
+                  (progv (funcall vals*) (funcall vars*)
+                    (funcall body*))))))
            ((quote)
             (let ((quoted-object (cadr form)))
-              (eval-lambda (env)
-                (declare (ignore env))
+              (eval-lambda ()
                 quoted-object)))
            ((return-from)
             (destructuring-bind (name &optional value) (rest form)
               (let ((value* (prepare-form value context))
                     (tag    (context-block-tag context name)))
-                (eval-lambda (env)
-                  (throw tag (funcall value* env))))))
+                (eval-lambda ()
+                  (throw tag (funcall value*))))))
            ((the)
             (prepare-form (third form) context))
            ((throw)
             (destructuring-bind (tag result) (rest form)
               (let ((tag*    (prepare-form tag    context))
                     (result* (prepare-form result context)))
-                (eval-lambda (env)
-                  (throw (funcall tag* env) (funcall result* env))))))
+                (eval-lambda ()
+                  (throw (funcall tag*) (funcall result*))))))
            ((unwind-protect)
             (destructuring-bind (protected &body body) (rest form)
               (let ((protected* (prepare-form  protected context))
                     (body*      (prepare-progn body      context)))
-                (eval-lambda (env)
-                  (unwind-protect (funcall protected* env)
-                    (funcall body* env))))))
+                (eval-lambda ()
+                  (unwind-protect (funcall protected*)
+                    (funcall body*))))))
            #+sbcl
            ((sb!ext:truly-the)
             (prepare-form (third form) context))
@@ -867,8 +871,7 @@ children of CONTEXT can be stack-allocated."
            ((go)
             (let* ((go-tag    (second form))
                    (catch-tag (context-find-go-tag context go-tag)))
-              (eval-lambda (env)
-                (declare (ignore env))
+              (eval-lambda ()
                 (throw catch-tag go-tag))))
            ((tagbody)
             ;; 1. set up catch handler
@@ -880,15 +883,14 @@ children of CONTEXT can be stack-allocated."
                                                (destructuring-bind (tag . body) x
                                                  (cons tag (prepare-progn body new-context))))
                                              tags-and-bodies)))
-              (eval-lambda (env)
+              (eval-lambda ()
                 (block tagbody-loop
                   (let ((code tags-and-bodies*))
                     (loop
                       (setq code
                             (member (catch jump
                                       (dolist (tag-and-body* code)
-                                        (funcall (the eval-closure (cdr tag-and-body*))
-                                                 env))
+                                        (funcall (the eval-closure (cdr tag-and-body*))))
                                       (return-from tagbody-loop))
                                     tags-and-bodies*
                                     :key #'car))
