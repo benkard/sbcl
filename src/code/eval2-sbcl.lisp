@@ -31,6 +31,17 @@
 (defun (setf source-location) (val eval-closure)
   (setf (gethash eval-closure *source-locations*) val))
 
+(defun context-collect (context fn)
+  ;;dummy
+  (error "stub"))
+(defun find-class (class)
+  ;;dummy
+  (error "stub"))
+(defun (setf find-class) (class)
+  ;;dummy
+  (error "stub"))
+
+
 (defun annotate-lambda-with-source (closure)
   (when (and (boundp 'sb!c::*current-path*)
              (boundp 'sb!c::*source-info*)
