@@ -7,9 +7,24 @@
 (defvar *mode* :not-compile-time)
 (defvar *form*)
 
-(defun maybe-closes-over-p (context form vars)
-  (declare (ignore context form vars))
+(defun maybe-closes-p (context form)
+  "Check whether FORM potentially closes over anything not bound in CONTEXT.
+
+We use this to determine whether environments corresponding to
+children of CONTEXT can be stack-allocated."
+  (declare (ignore context form))
   ;; FIXME
+  ;;
+  ;; What we really want to do here is macroexpand FORM and have a
+  ;; look at whether there are any potential closures there.  It
+  ;; should be pretty easy to simply check for the mere presence of
+  ;; LAMBDA, SB-INT:NAMED-LAMBDA, FLET, and LABELS.
+  ;;
+  ;; Beyond that, it's tricky.  We mustn't assume that FORM doesn't
+  ;; close over the new enviroment we want to establish just because
+  ;; it doesn't close over one of the new environment's direct lexical
+  ;; variables.  There could be a child environment it closes over,
+  ;; which still means we need to keep the environment on the heap.
   t)
 
 (defun parse-tagbody-tags-and-bodies (forms)
@@ -270,8 +285,8 @@
                              (process-bindings keys :key)
                              (process-bindings aux :aux)))))
                (envp (or (> varnum +stack-max+)
-                         (maybe-closes-over-p context `(progn ,@body) argvars)
-                         (some (lambda (x) (maybe-closes-over-p context x argvars))
+                         (maybe-closes-p context `(progn ,@body))
+                         (some (lambda (x) (maybe-closes-p context x))
                                default-values)))
                (body-context (context-add-specials new-context specials))
                (debug-info (make-debug-record body-context lambda-list name))
@@ -633,7 +648,7 @@
                        (vars (mapcar #'car real-bindings))
                        (varnum (length vars))
                        (envp (or (> varnum +stack-max+)
-                                 (maybe-closes-over-p context `(progn ,@body) vars)))
+                                 (maybe-closes-p context `(progn ,@body))))
                        (new-context
                          (context-add-env-lexicals context (list)))
                        (debug-info
