@@ -246,12 +246,7 @@ children of CONTEXT can be stack-allocated."
         (when morep
           (error "The interpreter does not support the lambda-list keyword ~S"
                  'sb!int:&more))
-        (let* ((argvars (append required
-                                (mapcan (lambda (x) (lambda-binding-vars x :optional)) optional)
-                                (and restp (list rest))
-                                (mapcan (lambda (x) (lambda-binding-vars x :key)) keys)
-                                (mapcan (lambda (x) (lambda-binding-vars x :aux)) aux)))
-               (keywords (mapcar #'lambda-key keys))
+        (let* ((keywords (mapcar #'lambda-key keys))
                (required-num (length required))
                (optional-num (length optional))
                (key-num (length keys))
