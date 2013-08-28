@@ -182,7 +182,7 @@ children of CONTEXT can be stack-allocated."
      (t
       (etypecase form
         (symbol
-         (prepare-ref form))
+         (prepare-symbol-ref form))
         (cons
          (case (first form)
            ((if)
@@ -209,7 +209,7 @@ children of CONTEXT can be stack-allocated."
            ((load-time-value)
             (let ((load-form (cadr form)))
               ;; FIXME
-              (prepare-form load-form context)))
+              (prepare-form load-form)))
            ((multiple-value-call)
             (destructuring-bind (f &rest argforms) (rest form)
               (let ((f* (prepare-form f))
@@ -235,6 +235,14 @@ children of CONTEXT can be stack-allocated."
                   (prepare-form `(values ,values-form)))))
            ((progn)
             (prepare-progn (rest form) mode))
+           ((%with-binding)
+            (destructuring-bind (val var &body body) (rest form)
+              (let ((val* (prepare-form val))
+                    (var* (prepare-form var))
+                    (body* (prepare-progn body)))
+                (eval-lambda ()
+                  (progv (list (funcall val*)) (list (funcall var*))
+                    (funcall body*))))))
            ((progv)
             (destructuring-bind (vals vars &body body) (rest form)
               (let ((vals* (prepare-form vals))
