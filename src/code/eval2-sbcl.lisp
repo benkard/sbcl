@@ -82,6 +82,10 @@
   ;;
   (sb!int:parse-lambda-list lambda-list))
 
+(defun native-environment->context (lexenv)
+  (declare (ignore lexenv))
+  ;;FIXME
+  (make-null-context))
 (defun context->native-environment (context)
   (let ((functions
           (loop for (name . expander) in (context-collect context 'context-macros)

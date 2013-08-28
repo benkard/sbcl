@@ -28,6 +28,10 @@
        (let ((,specials-var (mapcan #'decl-specials ,decls)))
          ,@body))))
 
+(defmacro with-context (context &body body)
+  `(let ((*context* ,context))
+     ,@body))
+
 (defmacro specialize (var value possible-values &body body)
   `(ecase ,value
      ,@(loop for x in (cl:eval possible-values)
