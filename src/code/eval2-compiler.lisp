@@ -434,38 +434,45 @@
                                                bindings))
                         (vars (mapcar #'car real-bindings))
                         (varnum (length vars))
+                        #+(or)
                         (envp (or (> varnum +stack-max+)
                                   (maybe-closes-p *context* `(progn ,@body))))
                         (new-context
                           (context-add-env-lexicals *context* (list)))
                         (debug-info
-                          (make-debug-record new-context))
-                        srav-laiceps)
+                          (make-debug-record new-context)))
                    `(with-indefinite-extent-environment (*env* ,debug-info *env* ,varnum)
-                      ,(nlet iter ((remaining-bindings real-bindings))
-                         (if (endp remaining-bindings)
-                             `(progn ,@exprs)
-                             (destructuring-bind (var . value-form)
-                                 (first remaining-bindings)
-                               (let ((val* (compile-form
-                                            `(without-environment ,value-form))))
-                                 (if (or (member (the symbol var) specials)
-                                         (globally-special-p var))
-                                     (progn
-                                       (context-add-special! new-context var)
-                                       `(%with-binding ,var ,val*
-                                          ,(iter (rest remaining-bindings))))
-                                     (progn
-                                       (context-add-env-lexical! new-context var)
-                                       (let* ((lexical (context-find-lexical new-context var))
-                                              (nesting (lexical-nesting lexical))
-                                              (offset (lexical-offset lexical)))
-                                        `(progn
-                                           ,(compile-form
-                                             `(setf (environment-value *env* ,nesting ,offset)
-                                                    ,val*))
-                                           ,(iter (rest remaining-bindings))))))))))
-                      ,@(with-context new-context (mapcar #'compile-form exprs)))))))
+                      ,(let ((dynvals-sym (gensym "DYNVALS"))
+                             (dynvars-sym (gensym "DYNVARS")))
+                         (nlet iter ((remaining-bindings real-bindings))
+                         
+                           (if (endp remaining-bindings)
+                               `(progn ,@exprs)
+                               (destructuring-bind (var . value-form)
+                                   (first remaining-bindings)
+                                 (let ((val* (compile-form
+                                              `(without-environment ,value-form))))
+                                   (if (or (member (the symbol var) specials)
+                                           (globally-special-p var))
+                                       (progn
+                                         (context-add-special! new-context var)
+                                         `(progn
+                                            ,(compile-form `(push ,val* ,dynvals-sym))
+                                            ,(compile-form `(push ',var ,dynvars-sym))
+                                            ,(iter (rest remaining-bindings))))
+                                       (progn
+                                         (context-add-env-lexical! new-context var)
+                                         (let* ((lexical (context-find-lexical new-context var))
+                                                (nesting (lexical-nesting lexical))
+                                                (offset (lexical-offset lexical)))
+                                           `(progn
+                                              ,(compile-form
+                                                `(setf (environment-value *env* ,nesting ,offset)
+                                                       ,val*))
+                                              ,(iter (rest remaining-bindings)))))))))
+                           `(progv ,dynvars-sym ,dynvals-sym
+                              ,@(with-context new-context
+                                  (mapcar #'compile-form body))))))))))
             ((let*)
              ;;??????
              )
