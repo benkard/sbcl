@@ -110,7 +110,7 @@
                 (symbol (keywordify (first entry)))))
       (symbol (keywordify entry)))))
 
-(defun compile-lambda (lambda-form &key (name nil namep))
+(defun compile-lambda (lambda-form &key (name nil))
   ;;#+sbcl (declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
@@ -124,102 +124,69 @@
         (when morep
           (error "The interpreter does not support the lambda-list keyword ~S"
                  'sb!int:&more))
-        (let* ((argvars (append required
-                                (mapcan (lambda (x) (lambda-binding-vars x :optional)) optional)
-                                (and restp (list rest))
-                                (mapcan (lambda (x) (lambda-binding-vars x :key)) keys)
-                                (mapcan (lambda (x) (lambda-binding-vars x :aux)) aux)))
-               (keywords (mapcar #'lambda-key keys))
-               (required-num (length required))
+        (let* ((required-num (length required))
                (optional-num (length optional))
-               (key-num (length keys))
-               (aux-num (length aux))
+               (varspecs (list))
+               #+(or)
                (default-values (append (mapcar #'lambda-binding-default optional)
                                        (mapcar #'lambda-binding-default keys)
                                        (mapcar #'lambda-binding-default aux)))
-               (new-context (make-lexical-context *context*))
-               (varspecs (list))
+               #+(or)
                (varnum 0)
-               (default-values*
-                 (flet ((register-var (var)
-                          (if (or (member var specials :test #'eq)
-                                  (globally-special-p var))
-                              (progn
-                                (context-add-special! new-context var)
-                                (push (cons :special var) varspecs))
-                              (progn
-                                (context-add-env-lexical! new-context var)
-                                (push :lexical varspecs)
-                                (incf (the fixnum varnum))))))
-                   (mapc #'register-var required)
-                   (flet ((process-bindings (bindings kind)
-                            (loop for binding in bindings
-                                  for default-value = (lambda-binding-default binding)
-                                  for vars = (lambda-binding-vars binding kind)
-                                  collect (with-context new-context
-                                            (compile-form default-value))
-                                  do (mapc #'register-var vars))))
-                     (append (process-bindings optional :optional)
-                             (progn (when restp (register-var rest)) '())
-                             (process-bindings keys :key)
-                             (process-bindings aux :aux)))))
+               #+(or)
                (envp (or (> varnum +stack-max+)
                          (maybe-closes-p *context* `(progn ,@body))
                          (some (lambda (x) (maybe-closes-p *context* x))
-                               default-values)))
-               (body-context (context-add-specials new-context specials))
-               (debug-info (make-debug-record body-context lambda-list name))
-               (body* (with-context body-context
-                        (compile-form
-                         (if namep
-                             `(block ,(fun-name-block-name name) ,@body)
-                             `(progn ,@body)))))
-               (unbound (gensym)))
+                               default-values))))
           (setq varspecs (nreverse varspecs))
           (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
                 (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*))
                 (i 0))
             (declare (ignorable current-path source-info))
             `(%lambda (,name ,current-path ,source-info)
-               (when (< %argnum ,required-num)
-                 (error 'simple-program-error
-                        :format-control "invalid number of arguments: ~D (expected: >=~D)"
-                        :format-arguments (list (length args) required-num)))
-               ,@(unless (or keyp restp)
-                   `((when (> %argnum ,(+ required-num optional-num))
-                       (error 'simple-program-error
-                              :format-control "invalid number of arguments: ~D (expected: >=~D)"
-                              :format-arguments (list (length args) required-num)))))
                ,(compile-form
-                 `(let* (,@(loop for arg in required
-                                 collect `(,arg (%getarg ,i))
-                                 do (incf i))
-                         ,@(loop for arg in optional
-                                 for var = (lambda-binding-main-var arg)
-                                 for default = (lambda-binding-default arg)
-                                 for suppliedp = (lambda-binding-suppliedp-var arg)
-                                 collect `(,var (if (< ,i %argnum)
-                                                    (%getarg ,i)
-                                                    ,default))
-                                 when suppliedp
-                                   collect `(,suppliedp (< ,i %argnum))
-                                 do (incf i))
-                         ,@(when (or restp keyp)
-                             `((,rest (%arglistfrom ,i))))
-                         ,@(loop for arg in keys
-                                 for var = (lambda-binding-main-var arg)
-                                 for key = (lambda-key arg)
-                                 for default = (lambda-binding-default arg)
-                                 for suppliedp = (lambda-binding-suppliedp-var arg)
-                                 collect `(,var (getf ,rest ',key ,default))
-                                 when suppliedp
-                                   collect `(,suppliedp
-                                             (and (get-properties ,rest '(,key)) t))
-                                 do (incf i))
-                         ,@(loop for arg in aux
-                                 for var = (lambda-binding-main-var arg)
-                                 for default = (lambda-binding-default arg)
-                                 collect `(,var ,default)))
+                 `(when (< %argnum ,required-num)
+                    (error 'simple-program-error
+                           :format-control "invalid number of arguments: ~D (expected: >=~D)"
+                           :format-arguments (list %argnum ,required-num))))
+               ,@(unless (or keyp restp)
+                   (list
+                    (compile-form
+                     `(when (> %argnum ,(+ required-num optional-num))
+                        (error 'simple-program-error
+                               :format-control "invalid number of arguments: ~D (expected: >=~D)"
+                               :format-arguments (list %argnum ,required-num))))))
+               ,(compile-form
+                 `(%let* (,lambda-list ,name)
+                         (,@(loop for arg in required
+                                  collect `(,arg (%getarg ,i))
+                                  do (incf i))
+                          ,@(loop for arg in optional
+                                  for var = (lambda-binding-main-var arg)
+                                  for default = (lambda-binding-default arg)
+                                  for suppliedp = (lambda-binding-suppliedp-var arg)
+                                  collect `(,var (if (< ,i %argnum)
+                                                     (%getarg ,i)
+                                                     ,default))
+                                  when suppliedp
+                                  collect `(,suppliedp (< ,i %argnum))
+                                  do (incf i))
+                          ,@(when (or restp keyp)
+                              `((,rest (%arglistfrom ,i))))
+                          ,@(loop for arg in keys
+                                  for var = (lambda-binding-main-var arg)
+                                  for key = (lambda-key arg)
+                                  for default = (lambda-binding-default arg)
+                                  for suppliedp = (lambda-binding-suppliedp-var arg)
+                                  collect `(,var (getf ,rest ',key ,default))
+                                  when suppliedp
+                                  collect `(,suppliedp
+                                            (and (get-properties ,rest '(,key)) t))
+                                  do (incf i))
+                          ,@(loop for arg in aux
+                                  for var = (lambda-binding-main-var arg)
+                                  for default = (lambda-binding-default arg)
+                                  collect `(,var ,default)))
                     (declare (special ,@specials))
                     ,@(when (and keyp (not allowp))
                         `((unless (getf ,rest :allow-other-keys nil)
@@ -238,21 +205,19 @@
       (let* ((lexical (context-find-lexical *context* var))
              (nesting (lexical-nesting lexical))
              (offset (lexical-offset lexical)))
-        `(%envref ,nesting ,offset))
+        `(%envget ,nesting ,offset))
       (if (globally-constant-p var)
-          (eval-lambda (env)
-            (declare (ignore env))
-            `(symbol-value ',var))
+          `(%varget ,var)
           (progn
             (assume-special *context* var)
-            (eval-lambda (env)
-              (declare (ignore env))
-              (unless (boundp var)
-                (error 'unbound-variable :name var))
-              `(symbol-value ',var))))))
+            (unless (boundp var)
+              (error 'unbound-variable :name var))
+            `(%varget ,var)))))
 
 (defun compile-function-ref (function-name)
-  (compile-ref `(function ,function-name)))
+  (if (local-function-p *context* function-name)
+      (compile-ref `(function ,function-name))
+      `(%fdef-ref ,function-name)))
 
 (defun compile-local-call (f args)
   (let* ((lexical (context-find-lexical *context* `(function ,f)))
@@ -283,12 +248,39 @@
      (t
       (etypecase form
         (symbol
-         (let ((macro? (context-find-symbol-macro *context* form)))
-           (if macro?
-               (compile-form macro?)
-               (compile-ref form))))
+         (case form
+           ((%argnum)
+            form)
+           (otherwise
+            (let ((macro? (context-find-symbol-macro *context* form)))
+              (if macro?
+                  (compile-form macro?)
+                  (compile-ref form))))))
         (cons
          (case (first form)
+           ((%getarg %arglistfrom %varget %envget %fdef-ref)
+            form)
+           ((%varset)
+            (destructuring-bind (var val) (rest form)
+              `(%varset ,var ,(compile-form val))))
+           ((%envset)
+            (destructuring-bind (nesting offset val) (rest form)
+              `(%envset ,nesting ,offset ,(compile-form val))))
+           ((%with-binding)
+            (destructuring-bind (val var &body body) (rest form)
+              `(%with-binding ,val ,var ,(mapcar #'compile-form body))))
+           ((%with-environment)
+            (destructuring-bind (extent info &rest body) (rest form)
+              `(%with-binding ,extent ,info ,@(mapcar #'compile-form body))))
+           ((%local-call)
+            (destructuring-bind (nesting offset &rest args) (rest form)
+              `(%local-call ,nesting ,offset ,@(mapcar #'compile-form args))))
+           ((%global-call)
+            (destructuring-bind (name &rest args) (rest form)
+              `(%global-call ,name ,@(mapcar #'compile-form args))))
+           ((%lambda)
+            (destructuring-bind (info &rest body) (rest form)
+              `(%lambda ,info ,@(mapcar #'compile-form body))))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (compile-form a))
@@ -358,8 +350,7 @@
                                  (assume-special *context* var)
                                  (prevent-constant-modification var)
                                  (compile-form
-                                  `(setf (symbol-value ',var)
-                                         ,valform)))))))            
+                                  `(%varset ,var ,valform)))))))            
             ((flet labels)
              (destructuring-bind (bindings &rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
@@ -378,7 +369,7 @@
                           (make-debug-record body-context))
                         (varnum
                           (length bindings)))
-                  `(with-indefinite-extent-environment (*env* ,debug-info *env* ,varnum)
+                  `(%with-environment :indefinite-extent (,debug-info ,varnum)
                      ,@(loop for (name lambda-list . body) in bindings
                              for i from 0
                              collect
@@ -388,8 +379,13 @@
                                                              :name name))))
                      ,@(with-context body-context
                          (mapcar #'compile-form body)))))))
-            ((let let*)
-             (destructuring-bind (bindings &rest exprs) (rest form)
+            ((let)
+             (compile-form `(%let (:none nil) ,@(rest form))))
+            ((let*)
+             (compile-form `(%let* (:none nil) ,@(rest form))))
+            ((%let %let*)
+             (destructuring-bind ((lambda-list function-name) bindings &rest exprs)
+                 (rest form)
                (with-parsed-body (body specials) exprs
                  (let* ((real-bindings (mapcar (lambda (form)
                                                  (if (listp form)
@@ -408,9 +404,9 @@
                               (context-add-env-lexicals *context* (list))
                               binding-context))
                         (debug-info
-                          (make-debug-record body-context)))
+                          (make-debug-record body-context lambda-list function-name)))
                    (with-context binding-context
-                     `(with-indefinite-extent-environment (*env* ,debug-info *env* ,varnum)
+                     `(%with-environment :indefinite-extent (,debug-info ,varnum)
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
                            `(,@(if (eq (first form) 'let)
@@ -473,10 +469,10 @@
              `(sb!ext:truly-the ,@(mapcar #'compile-form (rest form))))
             #+sbcl
             ((sb!int:named-lambda)
-             )
+             (compile-lambda (cddr form) :name (cadr form)))
             #+ccl
             ((ccl:nfunction)
-             )
+             (compile-lambda (cdaddr form) :name (cadr form)))
             ((symbol-macrolet)
              (destructuring-bind (bindings &rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
