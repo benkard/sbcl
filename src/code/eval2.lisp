@@ -356,6 +356,7 @@ children of CONTEXT can be stack-allocated."
              multiple-value-setq)
             (error "invalid form"))
            (otherwise
+            (warn "bare global call")
             (destructuring-bind (f . args) form
               (prepare-global-call f args))))))))
    t))

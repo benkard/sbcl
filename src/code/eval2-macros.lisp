@@ -28,13 +28,6 @@
     `(let* ((,size% ,size)
             (,data% (make-array (list ,size%)))
             (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
-       (declare (type (mod #.(1+ +stack-max+)) ,size%)
-                ;; we must not allocate environment objects on the
-                ;; stack unless we can be sure that all child
-                ;; environments will also be allocated on the stack,
-                ;; but we can't really know that.
-                ;(dynamic-extent ,var)
-                (dynamic-extent ,data%))
        ,@body)))
 
 (defmacro with-parsed-body ((forms-var specials-var) exprs &body body)
