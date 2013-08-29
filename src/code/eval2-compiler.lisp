@@ -146,8 +146,7 @@
                                   for default-value = (lambda-binding-default binding)
                                   for vars = (lambda-binding-vars binding kind)
                                   collect (with-context new-context
-                                            ;;XXX
-                                            (prepare-form default-value))
+                                            (compile-form default-value))
                                   do (mapc #'register-var vars))))
                      (append (process-bindings optional :optional)
                              (progn (when restp (register-var rest)) '())
@@ -160,7 +159,7 @@
                (body-context (context-add-specials new-context specials))
                (debug-info (make-debug-record body-context lambda-list name))
                (body* (with-context body-context
-                        (prepare-form
+                        (compile-form
                          (if namep
                              `(block ,(fun-name-block-name name) ,@body)
                              `(progn ,@body)))))
@@ -414,7 +413,7 @@
                              ((and e (eq mode :compile-time-too))
                               (compile-progn body))
                              (t
-                              (prepare-nil)))))
+                              (compile-nil)))))
                     ((or (member :execute times)
                          (member 'cl:eval times))
                      (compile-progn body))
@@ -438,13 +437,34 @@
                                  (compile-form
                                   `(setf (symbol-value ',var)
                                          ,valform)))))))            
-            ((flet)
-             
-             ;;??????
-             )
-            ((labels)
-             ;;??????
-             )
+            ((flet labels)
+             (destructuring-bind (bindings &rest exprs) (rest form)
+               (with-parsed-body (body specials) exprs
+                 (declare (ignore specials))
+                 (let* ((function-names (mapcar #'first bindings))
+                        (body-context (context-add-env-lexicals
+                                       *context*
+                                       (mapcar #'(lambda (name)
+                                                   `(function ,name))
+                                               function-names)))
+                        (binding-context
+                          (if (eq 'flet (first form))
+                              (context-add-env-lexicals *context* '())
+                              body-context))
+                        (debug-info
+                          (make-debug-record body-context))
+                        (varnum
+                          (length bindings)))
+                  `(with-indefinite-extent-environment (*env* ,debug-info *env* ,varnum)
+                     ,@(loop for (name lambda-list . body) in bindings
+                             for i from 0
+                             collect
+                                `(%envset 0 ,i
+                                          ,(with-context binding-context
+                                             (compile-lambda (cons lambda-list body)
+                                                             :name name))))
+                     ,@(with-context body-context
+                         (mapcar #'compile-form body)))))))
             ((let let*)
              (destructuring-bind (bindings &rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
