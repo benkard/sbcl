@@ -86,6 +86,11 @@
               (symbol (first entry))))
     (symbol entry)))
 
+(defun lambda-binding-suppliedp-var (entry)
+  (etypecase entry
+    (cons (third entry))
+    (symbol nil)))
+
 (defun lambda-simple-binding-vars (entry)
   (etypecase entry
     (cons   (list (first entry)))
@@ -114,11 +119,17 @@
           (parse-lambda-list lambda-list)
         (declare (ignore more-context more-count))
         (declare (ignorable auxp morep))
+        (setq rest (or rest (gensym "REST")))
         #+sbcl
         (when morep
           (error "The interpreter does not support the lambda-list keyword ~S"
                  'sb!int:&more))
-        (let* ((keywords (mapcar #'lambda-key keys))
+        (let* ((argvars (append required
+                                (mapcan (lambda (x) (lambda-binding-vars x :optional)) optional)
+                                (and restp (list rest))
+                                (mapcan (lambda (x) (lambda-binding-vars x :key)) keys)
+                                (mapcan (lambda (x) (lambda-binding-vars x :aux)) aux)))
+               (keywords (mapcar #'lambda-key keys))
                (required-num (length required))
                (optional-num (length optional))
                (key-num (length keys))
@@ -165,159 +176,62 @@
                              `(progn ,@body)))))
                (unbound (gensym)))
           (setq varspecs (nreverse varspecs))
-          (flet
-              ((handle-arguments (&rest args)
-                 (declare (dynamic-extent args))
-                 ;; All this ELT and LENGTH stuff is not as
-                 ;; inefficient as it looks.  SBCL transforms
-                 ;; &rest into &more here.
-                 (dnlet iter
-                     ((rest
-                       (when (or restp keyp)
-                         (loop for i
-                               from (+ required-num optional-num)
-                               below (length args)
-                               collect (elt args i))))
-                      (restnum (max 0 (- (length args) (+ required-num optional-num))))
-                      (keys-checked-p nil)
-                      (my-default-values* default-values*)
-                      (my-keywords keywords)
-                      (my-varspecs varspecs)
-                      (argi 0)        ;how many actual arguments have
-                                      ;been processed
-                      (vari 0)        ;how many lexical vars have been
-                                      ;bound
-                      (i 0))          ;how many formal arguments have
-                                      ;been processed
-                     (declare (fixnum restnum argi vari i))
-                     (flet ((push-args (&rest values)
-                              ;; Push VALUES onto the
-                              ;; environment.
-                              (incf i)
-                              (dolist (value values)
-                                (let ((varspec (pop my-varspecs)))
-                                  (if (eq varspec :lexical)
-                                      (setf
-                                       (environment-value *env* 0 (incff vari))
-                                       value)
-                                      (let ((var (cdr varspec)))
-                                        (assert (eq :special
-                                                    (car varspec))
-                                                (varspec))
-                                        (return-from iter
-                                          (progv (list var) (list value)
-                                            (iter rest restnum keys-checked-p
-                                                  my-default-values* my-keywords
-                                                  my-varspecs argi vari i)))))))))
-                       (declare (inline push-args))
-                       (prog ()
-                        positional
-                          (when (>= argi (length args))
-                            (go missing-optionals))
-                          (when (>= argi (the fixnum
-                                              (+ required-num optional-num)))
-                            (go rest))
-                          (if (>= argi required-num)
-                              (progn
-                                (pop my-default-values*)
-                                (push-args (elt args (incff argi)) t))
-                              (push-args (elt args (incff argi))))
-                          (go positional)
-                        missing-optionals
-                          (unless (>= argi required-num)
-                            (error 'simple-program-error
-                                   :format-control "invalid number of arguments: ~D (expected: >=~D)"
-                                   :format-arguments (list (length args) required-num)))
-                          (when (>= i (the fixnum (+ required-num
-                                                     optional-num)))
-                            (go rest))
-                          (let ((val* (pop my-default-values*)))
-                            (push-args (funcall (the eval-closure val*))
-                                       nil))
-                          (go missing-optionals)
-                        rest
-                          (when (>= i (the fixnum
-                                           (+ (if restp 1 0)
-                                              (the fixnum
-                                                   (+ required-num optional-num)))))
-                            (go keys))
-                          (when restp
-                            (push-args rest))
-                        keys
-                          (unless keyp
-                            (unless (or restp (= argi (length args)))
-                              (error 'simple-program-error
-                                     :format-control "invalid number of arguments: ~D (expected: <=~D)"
-                                     :format-arguments (list (length args) (+ required-num optional-num))))
-                            (go aux))
-                          (unless (evenp restnum)
-                            (error 'simple-program-error
-                                   :format-control "odd number of keyword arguments: ~S"
-                                   :format-arguments (list rest)))
-                          (when (>= i
-                                    (the fixnum
-                                         (+ (if restp 1 0)
-                                            (the fixnum
-                                                 (+ required-num
-                                                    (the fixnum
-                                                         (+ optional-num
-                                                            key-num)))))))
-                            (unless (or keys-checked-p
-                                        allowp
-                                        (getf rest :allow-other-keys nil))
-                              (loop for (k) on rest by #'cddr
-                                    unless (or (eq k :allow-other-keys)
-                                               (member k keywords :test #'eq))
-                                    do (error 'simple-program-error
-                                              :format-control "unknown &KEY argument: ~A"
-                                              :format-arguments (list k)))
-                              (setq keys-checked-p t))
-                            (go aux))
-                          (let* ((key  (the symbol (pop my-keywords)))
-                                 (val* (pop my-default-values*))
-                                 (x    (getf rest key unbound)))
-                            (if (eq unbound x)
-                                (progn
-                                  (push-args (funcall (the eval-closure val*))
-                                             nil))
-                                (progn
-                                  (push-args x t))))
-                          (go keys)
-                        aux
-                          (when (>= i
-                                    (+ (if restp 1 0)
-                                       (the fixnum
-                                            (+ required-num
-                                               (the fixnum
-                                                    (+ optional-num
-                                                       key-num))
-                                               aux-num))))
-                            (go final-call))
-                          (let ((val* (pop my-default-values*)))
-                            (push-args (funcall (the eval-closure val*))))
-                          (go aux)
-                        final-call
-                          (assert (null my-default-values*)
-                                  (my-default-values*))
-                          (return
-                            (funcall body*)))))))
-              ;;(declare (inline handle-arguments))  ;crashes the compiler! lp#1203260
-            (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
-                  (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*)))
-              (declare (ignorable current-path source-info))
-              (if envp
-                  (eval-lambda ()
-                    (let ((env *env*))
-                      (interpreted-lambda (name current-path source-info) (&rest args)
-                        (declare (dynamic-extent args))
-                        (with-environment (make-environment debug-info env varnum)
-                          (apply #'handle-arguments args)))))
-                  (eval-lambda ()
-                    (let ((env *env*))
-                      (interpreted-lambda (name current-path source-info) (&rest args)
-                        (declare (dynamic-extent args))
-                        (with-dynamic-extent-environment (*env* debug-info env varnum)
-                          (apply #'handle-arguments args)))))))))))))
+          (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
+                (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*))
+                (i 0))
+            (declare (ignorable current-path source-info))
+            `(%lambda (,name ,current-path ,source-info)
+               (when (< %argnum ,required-num)
+                 (error 'simple-program-error
+                        :format-control "invalid number of arguments: ~D (expected: >=~D)"
+                        :format-arguments (list (length args) required-num)))
+               ,@(unless (or keyp restp)
+                   `((when (> %argnum ,(+ required-num optional-num))
+                       (error 'simple-program-error
+                              :format-control "invalid number of arguments: ~D (expected: >=~D)"
+                              :format-arguments (list (length args) required-num)))))
+               ,(compile-form
+                 `(let* (,@(loop for arg in required
+                                 collect `(,arg (%getarg ,i))
+                                 do (incf i))
+                         ,@(loop for arg in optional
+                                 for var = (lambda-binding-main-var arg)
+                                 for default = (lambda-binding-default arg)
+                                 for suppliedp = (lambda-binding-suppliedp-var arg)
+                                 collect `(,var (if (< i %argnum)
+                                                    (%getarg ,i)
+                                                    ,default))
+                                 when suppliedp
+                                   collect `(,suppliedp (< i %argnum))
+                                 do (incf i))
+                         ,@(when (or restp keyp)
+                             `((,rest (%arglistfrom ,i))))
+                         ,@(loop for arg in keys
+                                 for var = (lambda-binding-main-var arg)
+                                 for key = (lambda-key arg)
+                                 for default = (lambda-binding-default arg)
+                                 for suppliedp = (lambda-binding-suppliedp-var arg)
+                                 collect `(,var (getf ,rest ',key ,default))
+                                 when suppliedp
+                                   collect `(,suppliedp
+                                             (and (get-properties ,rest '(,key)) t))
+                                 do (incf i))
+                         ,@(loop for arg in aux
+                                 for var = (lambda-binding-main-var arg)
+                                 for default = (lambda-binding-default arg)
+                                 collect `(,var ,default)))
+                    (declare (special ,@specials))
+                    ,@(when (and keyp (not allowp))
+                        `((unless (getf ,rest :allow-other-keys nil)
+                            (let ((to-check ,rest))
+                              (unless (endp to-check)
+                                (let ((k (pop to-check)))
+                                  (unless (member k ',(cons :allow-other-keys (mapcar #'lambda-key keys)))
+                                    (error 'simple-program-error
+                                           :format-control "unknown &KEY argument: ~A"
+                                           :format-arguments (list k))))
+                                (pop to-check))))))
+                    ,@body)))))))))
 
 (defun compile-ref (var)
   (if (context-var-lexical-p *context* var)
@@ -588,7 +502,7 @@
                      (compile-progn body mode))))))
             ((catch unwind-protect multiple-value-call multiple-value-prog1 progv
                     the throw)
-             (compile-form `(,(first form) ,@(mapcar #'compile-form (rest form)))))
+             `(,(first form) ,@(mapcar #'compile-form (rest form))))
             ((progn)
              (compile-progn (rest form) mode))
             ((block)

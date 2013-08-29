@@ -22,6 +22,21 @@
                 (dynamic-extent ,data%))
        ,@body)))
 
+(defmacro with-indefinite-extent-environment ((var debug-record parent size) &body body)
+  (let ((data% (gensym))
+        (size% (gensym)))
+    `(let* ((,size% ,size)
+            (,data% (make-array (list ,size%)))
+            (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
+       (declare (type (mod #.(1+ +stack-max+)) ,size%)
+                ;; we must not allocate environment objects on the
+                ;; stack unless we can be sure that all child
+                ;; environments will also be allocated on the stack,
+                ;; but we can't really know that.
+                ;(dynamic-extent ,var)
+                (dynamic-extent ,data%))
+       ,@body)))
+
 (defmacro with-parsed-body ((forms-var specials-var) exprs &body body)
   (let ((decls (gensym)))
     `(multiple-value-bind (,decls ,forms-var) (body-decls&forms ,exprs)

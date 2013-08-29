@@ -11,7 +11,8 @@
   `(lambda ,lambda-list ,@body))
 
 (defun self-evaluating-p (form)
-  (not (or (symbolp form) (consp form))))
+  (or (keywordp form)
+      (not (or (symbolp form) (consp form)))))
 
 (defun fun-name-block-name (fun-name)
   (etypecase fun-name
