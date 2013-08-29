@@ -533,12 +533,13 @@
                    (compile-form `(values (setf (values ,@vars) ,values-form)))
                    (compile-form `(values ,values-form)))))
             ((multiple-value-bind)
-             ;;???????
-             )
-            ((block)
-             (compile-form `(%block ,@(rest form)) mode))
-            ((return-from)
-             (compile-form `(%return-from ,@(rest form)) mode))
+             (destructuring-bind (vars form &rest exprs) (rest form)
+               (with-parsed-body (body specials) exprs
+                 (compile-form
+                  `(let ,vars
+                     (declare (special ,@specials))
+                     (setf (values ,vars) ,form)
+                     ,@body)))))
             ((quote)
              form)
             #+sbcl
@@ -590,10 +591,12 @@
              (compile-form `(,(first form) ,@(mapcar #'compile-form (rest form)))))
             ((progn)
              (compile-progn (rest form) mode))
-            #+(or)
+            ((block)
+             (compile-form `(%block ,@(rest form)) mode))
+            ((return-from)
+             (compile-form `(%return-from ,@(rest form)) mode))
             ((go)
              (compile-form `(%go ,@(rest form)) mode))
-            #+(or)
             ((tagbody)
              (compile-form `(%tagbody ,@(rest form)) mode))
             (otherwise
