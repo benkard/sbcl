@@ -300,11 +300,6 @@ children of CONTEXT can be stack-allocated."
                   (multiple-value-prog1
                       (funcall values-form*)
                     (funcall body*))))))
-           ((multiple-value-setq)
-            (destructuring-bind (vars values-form) (rest form)
-              (if vars
-                  (prepare-form `(values (setf (values ,@vars) ,values-form)))
-                  (prepare-form `(values ,values-form)))))
            ((progn)
             (prepare-progn (rest form) mode))
            ((%with-binding)
@@ -352,7 +347,8 @@ children of CONTEXT can be stack-allocated."
            ((ccl:nfunction)
             (prepare-lambda (cdaddr form) :name (cadr form)))
            ((setq block flet labels let let* locally multiple-value-bind
-             return-from symbol-macrolet macrolet go tagbody eval-when)
+             return-from symbol-macrolet macrolet go tagbody eval-when
+             multiple-value-setq)
             (error "invalid form"))
            (otherwise
             (destructuring-bind (f . args) form
