@@ -251,11 +251,18 @@
                 (error 'unbound-variable :name var))
               `(symbol-value ',var))))))
 
+(defun compile-function-ref (function-name)
+  (compile-ref `(function ,function-name)))
+
+(defun compile-local-call (f args)
+  (let* ((lexical (context-find-lexical *context* `(function ,f)))
+         (nesting (lexical-nesting lexical))
+         (offset (lexical-offset lexical)))
+    `(%local-call ,nesting ,offset ,@(mapcar #'compile-form args))))
+
 (defun compile-global-call (f args)
   (let ((args* (mapcar #'compile-form args)))
     `(%global-call ,f ,@args*)))
-
-
 
 (defun compile-form (form
                      &optional (mode      *mode*)
@@ -506,7 +513,7 @@
                                   specials)
                      (compile-progn body mode))))))
             ((catch unwind-protect multiple-value-call multiple-value-prog1 progv
-                    the throw)
+              the throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))
             ((progn)
              (compile-progn (rest form) mode))
