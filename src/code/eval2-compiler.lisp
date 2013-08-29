@@ -345,7 +345,8 @@
                                  (let* ((lexical (context-find-lexical *context* var))
                                         (nesting (lexical-nesting lexical))
                                         (offset  (lexical-offset lexical)))
-                                   `(%envset ,nesting ,offset ,valform)))
+                                   (compile-form
+                                    `(%envset ,nesting ,offset ,valform))))
                                 (t
                                  (assume-special *context* var)
                                  (prevent-constant-modification var)
