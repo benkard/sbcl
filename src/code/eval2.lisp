@@ -62,7 +62,7 @@ children of CONTEXT can be stack-allocated."
 (defun prepare-lexical-set (nesting offset val)
   (let ((val* (prepare-form val)))
     (eval-lambda ()
-      (setf (environment-value *env* nesting offset) val*))))
+      (setf (environment-value *env* nesting offset) (funcall val*)))))
 
 
 (defun body-decls&forms (exprs)
