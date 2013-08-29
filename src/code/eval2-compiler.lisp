@@ -198,11 +198,11 @@
                                  for var = (lambda-binding-main-var arg)
                                  for default = (lambda-binding-default arg)
                                  for suppliedp = (lambda-binding-suppliedp-var arg)
-                                 collect `(,var (if (< i %argnum)
+                                 collect `(,var (if (< ,i %argnum)
                                                     (%getarg ,i)
                                                     ,default))
                                  when suppliedp
-                                   collect `(,suppliedp (< i %argnum))
+                                   collect `(,suppliedp (< ,i %argnum))
                                  do (incf i))
                          ,@(when (or restp keyp)
                              `((,rest (%arglistfrom ,i))))
