@@ -179,7 +179,7 @@ children of CONTEXT can be stack-allocated."
     (eval-lambda ()
       (let ((env *env*))
         (interpreted-lambda (name current-path source-info) (&rest *args*)
-          (declare (dynamic-extent *args*))
+          ;;(declare (dynamic-extent *args*))
           (let ((*env* env)
                 (*argnum* (length *args*)))
             (funcall body*)))))))
@@ -383,21 +383,24 @@ children of CONTEXT can be stack-allocated."
 
 #+(or)
 (with-environment (make-null-environment)
-  (funcall (prepare-form '(funcall
-                           (funcall
-                            (lambda (x)
-                              (lambda (y z)
-                                (setq x (+ x (* y z)))
-                                x))
-                            3)
-                           5 7)
-                         (make-null-context))))
+  (funcall (prepare-form (with-context (make-null-context)
+                           (compile-form
+                            '(funcall
+                              (funcall
+                               (lambda (x)
+                                 (lambda (y z)
+                                   (setq x (+ x (* y z)))
+                                   x))
+                               3)
+                              5 7))))))
 
 #+(or)
 (with-environment (make-null-environment)
   (funcall (funcall
             (prepare-form
-             '(lambda (a b &optional c (d 10 dp) &rest r &key e (f 12 fp) (g 12 gp) &aux (h 1) (i 2))
-               (list a b c d dp e f fp g gp r h i))))
+             (with-context (make-null-context)
+               (compile-form
+                '(lambda (a b &optional c (d 10 dp) &rest r &key e (f 12 fp) (g 12 gp) &aux (h 1) (i 2))
+                  (list a b c d dp e f fp g gp r h i))))))
            1 2 3 4 :f 5 :e 6))
 ;; => (1 2 3 4 T 6 5 T 12 NIL (:F 5 :E 6) 1 2)

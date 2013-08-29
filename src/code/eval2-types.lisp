@@ -8,7 +8,10 @@
 
 (defstruct (debug-record (:constructor
                              make-debug-record
-                             (context &optional (lambda-list :none) function-name)))
+                             (context &optional (lambda-list :none) function-name))
+                         #+(or)   ;for debugging purposes
+                         (:print-function (lambda (object stream foo)
+                                            (format stream "#<DEBUG-RECORD>"))))
   (context nil :type context)
   (lambda-list nil :type (or list (member :none)))
   (function-name nil))
