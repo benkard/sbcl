@@ -157,7 +157,7 @@
                                :format-control "invalid number of arguments: ~D (expected: >=~D)"
                                :format-arguments (list %argnum ,required-num))))))
                ,(compile-form
-                 `(%let* (,lambda-list ,name)
+                 `(%let* (,lambda-list ,name t)
                          (,@(loop for arg in required
                                   collect `(,arg (%getarg ,i))
                                   do (incf i))
@@ -273,7 +273,7 @@
                      (compile-ref form)))))))
         (cons
          (case (first form)
-           ((%getarg %arglistfrom %varget %envget %fdef-ref)
+           ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox)
             form)
            ((%varset)
             (destructuring-bind (var val) (rest form)
@@ -407,7 +407,8 @@
             ((let*)
              (compile-form `(%let* (:none nil) ,@(rest form))))
             ((%let %let*)
-             (destructuring-bind ((lambda-list function-name) bindings &rest exprs)
+             (destructuring-bind ((lambda-list function-name &optional set-box-p)
+                                  bindings &rest exprs)
                  (rest form)
                (with-parsed-body (body specials) exprs
                  (let* ((real-bindings (mapcar (lambda (form)
@@ -430,6 +431,8 @@
                           (make-debug-record body-context lambda-list function-name)))
                    (with-context binding-context
                      `(%with-environment :indefinite-extent (,debug-info ,varnum)
+                        ,@(when set-box-p
+                            `((%set-envbox)))
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
                            `(,@(if (eq (first form) 'let)

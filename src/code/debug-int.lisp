@@ -717,11 +717,11 @@
 
 (defun interpreter-frame-environment (frame)
   (let* ((debug-fun (frame-debug-fun frame))
-         (env-var (first (debug-fun-symbol-vars debug-fun 'sb!eval2::env))))
+         (env-var (first (debug-fun-symbol-vars debug-fun 'sb!eval2::envbox))))
     (and env-var
          (not (eq env-var :deleted))
          (ignore-errors
-          (access-compiled-debug-var-slot env-var frame)))))
+          (aref (access-compiled-debug-var-slot env-var frame))))))
 
 
 (defun compute-interpreted-lambda-list (debug-vars lambda-list args)
@@ -852,7 +852,7 @@
                                        (sb!eval2::debug-record-lambda-list debug-info)
                                        args))
                   :%debug-vars debug-vars
-                  :%function closure
+                  :%function (frame-closure-vars frame)
                   :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
                (code-location
                  (compute-interpreted-code-location interpreted-debug-fun

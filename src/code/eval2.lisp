@@ -178,18 +178,26 @@ children of CONTEXT can be stack-allocated."
 (defvar *args*)
 (defvar *argnum*)
 (defvar *more*)
+(defvar *envbox*)
 
 (declaim (ftype (function * *) prepare-lambda))
 (defun prepare-lambda (body name current-path source-info)
   (declare (ignorable name))
   (let ((body* (prepare-progn body)))
     (eval-lambda ()
-      (let ((env *env*))
+      (let ((env *env*)
+            ;; ENVBOX holds a box that points to the lambda's body
+            ;; environment.  It is set by the body %LET through the
+            ;; use of %SET-ENVBOX.
+            ;;
+            ;; This is useful mainly for debugging purposes.
+            (envbox (make-array '())))
         (interpreted-lambda (name current-path source-info)
                             #-sbcl (&rest *args*)
                             #+sbcl (sb!int:&more *more* *argnum*)
           ;;(declare (dynamic-extent *args*))
           (let ((*env* env)
+                (*envbox* envbox)
                 #-sbcl (*argnum* (length *args*)))
             (funcall body*)))))))
 
@@ -271,6 +279,8 @@ children of CONTEXT can be stack-allocated."
            ((%global-call)
             (destructuring-bind (f &rest args) (rest form)
               (prepare-global-call f args)))
+           ((%set-envbox)
+            (eval-lambda () (setf (aref *envbox*) *env*)))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (prepare-form a))
@@ -279,8 +289,7 @@ children of CONTEXT can be stack-allocated."
                 (eval-lambda ()
                   (if (funcall a*) (funcall b*) (funcall c*))))))
            ((%lambda)
-            (destructuring-bind ((name current-path source-info)
-                                 &rest body)
+            (destructuring-bind ((name current-path source-info) &rest body)
                 (rest form)
               (prepare-lambda body name current-path source-info)))
            ((catch)
