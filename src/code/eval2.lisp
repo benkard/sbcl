@@ -13,6 +13,12 @@
   (let ((*env* env))
     (funcall thunk)))
 
+;;(declaim (inline call-with-context))
+(defun call-with-context (context thunk)
+  (let ((*context* context))
+    (declare (special *context*))
+    (funcall thunk)))
+
 (defun maybe-closes-p (context form)
   "Check whether FORM potentially closes over anything not bound in CONTEXT.
 
