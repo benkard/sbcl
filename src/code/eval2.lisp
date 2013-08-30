@@ -239,7 +239,7 @@ children of CONTEXT can be stack-allocated."
            ((%getarg)
             (destructuring-bind (i) (rest form)
               (eval-lambda ()
-                #+sbcl (nth-value i (sb!c:%more-arg *more* *argnum*))
+                #+sbcl (sb!c:%more-arg *more* i)
                 #-sbcl (elt *args* i))))
            ((%arglistfrom)
             (destructuring-bind (i) (rest form)
