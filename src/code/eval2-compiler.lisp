@@ -266,7 +266,7 @@
            (otherwise
             (let ((macro? (context-find-symbol-macro *context* form)))
               (if macro?
-                  (compile-form macro?)
+                  (compile-form (car macro?) mode)
                   (compile-ref form))))))
         (cons
          (case (first form)
