@@ -662,6 +662,8 @@
  ("src/code/eval2"              :not-host)
  #!+sb-eval
  ("src/code/eval2-transformers" :not-host)
+ #!+sb-eval
+ ("src/code/eval2-compiler"     :not-host)
 
  ("src/code/late-extensions") ; needs condition system
  ("src/compiler/generic/target-core" :not-host) ; uses stuff from
