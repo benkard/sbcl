@@ -559,7 +559,8 @@
                     (compile-local-call f args))
                    (global-macro?
                     (compile-form
-                     (funcall global-macro? form (context->native-environment *context*))
+                     (funcall global-macro? form
+                              (context->native-environment *context*))
                      mode))
                    ((and (listp f)
                          (eq 'lambda (first f)))

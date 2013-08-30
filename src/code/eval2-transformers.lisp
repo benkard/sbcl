@@ -4,26 +4,19 @@
 ;; been taken from Toilet Lisp.
 
 ;; ----
-(eval-when (:compile-toplevel :load-toplevel)
-  (defconstant +block-mapping-sym+
-    (if (boundp '+block-mapping-sym+)
-        (symbol-value '+block-mapping-sym+)
-        (gensym "BLOCK-NAME"))))
+(define-symbol-macro block-mapping nil)
 
-(defmacro #.+block-mapping-sym+ () nil)
-
-(defmacro %block (block-name &body body)
+(defmacro %block (block-name &body body &environment env)
   (let ((catch-tag (gensym)))
-    `(symbol-macrolet ((,+block-mapping-sym+
-                         `(quote ,(acons ',block-name
-                                         ',catch-tag
-                                         ,+block-mapping-sym+))))
+    `(symbol-macrolet ((block-mapping
+                         ,(acons block-name
+                                 catch-tag
+                                 (macroexpand 'block-mapping env))))
        (catch ',catch-tag
          ,@body))))
 
 (defmacro %return-from (block-name &optional value &environment env)
-  `(throw ',(cdr (assoc block-name (cadr (macroexpand `(,+block-mapping-sym+)
-                                                      env))
+  `(throw ',(cdr (assoc block-name (macroexpand 'block-mapping env)
                         :test 'eq))
      ,value))
 
@@ -32,28 +25,17 @@
 
 
 ;; ----
-(eval-when (:compile-toplevel :load-toplevel)
-  (defconstant +go-tag-function-mapping-sym+
-    (if (boundp '+go-tag-function-mapping-sym+)
-        (symbol-value '+go-tag-function-mapping-sym+)
-        (gensym "GO-FUNCTION")))
-  (defconstant +go-tag-catch-tag-mapping-sym+
-    (if (boundp '+go-tag-catch-tag-mapping-sym+)
-        (symbol-value '+go-tag-catch-tag-mapping-sym+)
-        (gensym "GO-CATCH-TAG"))))
-
-(defmacro #.+go-tag-function-mapping-sym+ () nil)
-(defmacro #.+go-tag-catch-tag-mapping-sym+ () nil)
+(define-symbol-macro go-tag-function-mapping nil)
+(define-symbol-macro go-tag-catch-tag-mapping nil)
 
 (defmacro %go (tag &environment env)
-  `(throw ',(cdr (assoc tag (cadr (macroexpand `(,+go-tag-catch-tag-mapping-sym+)
-                                               env))
+  (print env)
+  `(throw ',(cdr (assoc tag (macroexpand 'go-tag-catch-tag-mapping env)
                         :test 'eq))
-     (function ,(cdr (assoc tag (cadr (macroexpand `(,+go-tag-function-mapping-sym+)
-                                                   env))
+     (function ,(cdr (assoc tag (macroexpand 'go-tag-function-mapping env)
                             :test 'eq)))))
 
-(defmacro %tagbody (&body body)
+(defmacro %tagbody (&body body &environment env)
   (let* (labels-and-catch-tags
          labels-and-functions
          (catch-tag (gensym "TAGBODY-CATCH-TAG"))
@@ -105,16 +87,12 @@
                                         ',end-marker)))
                                  nil))))))
                    body)))
-    `(symbol-macrolet ((,+go-tag-catch-tag-mapping-sym+
-                         (list 'quote
-                               (list* ,@(mapcar (lambda (x) (list 'quote x))
-                                                labels-and-catch-tags)
-                                      ,+go-tag-catch-tag-mapping-sym+)))
-                       (,+go-tag-function-mapping-sym+
-                         (list 'quote
-                               (list* ,@(mapcar (lambda (x) (list 'quote x))
-                                                labels-and-functions)
-                                      ,+go-tag-function-mapping-sym+))))
+    `(symbol-macrolet ((go-tag-catch-tag-mapping
+                         ,(append labels-and-catch-tags
+                                  (macroexpand 'go-tag-catch-tag-mapping env)))
+                       (go-tag-function-mapping
+                         ,(append labels-and-functions
+                                  (macroexpand 'go-tag-function-mapping env))))
        (labels (,@(rest sections))
          (%block ,block-name
            (let (,return-value-sym)
