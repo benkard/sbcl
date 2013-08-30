@@ -98,3 +98,5 @@
   (eq :special (sb!int:info :variable :kind var)))
 (defun globally-constant-p (var)
   (eq :constant (sb!int:info :variable :kind var)))
+(defun symbol-macro-p (var)
+  (eq :macro (sb!int:info :variable :kind var)))

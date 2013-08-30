@@ -264,10 +264,13 @@
            ((%argnum)
             form)
            (otherwise
-            (let ((macro? (context-find-symbol-macro *context* form)))
-              (if macro?
-                  (compile-form (car macro?) mode)
-                  (compile-ref form))))))
+            (let ((local-macro? (context-find-symbol-macro *context* form)))
+              (cond (local-macro?
+                     (compile-form (car local-macro?) mode))
+                    ((symbol-macro-p form)
+                     (macroexpand-1 form (context->native-environment *context*)))
+                    (t
+                     (compile-ref form)))))))
         (cons
          (case (first form)
            ((%getarg %arglistfrom %varget %envget %fdef-ref)
