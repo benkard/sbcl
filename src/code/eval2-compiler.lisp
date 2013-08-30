@@ -231,7 +231,6 @@
 
 (defun compile-form (form
                      &optional (mode      *mode*)
-                               (*context* *context*)
                      &aux      (*mode*    :execute)
                                #+sbcl
                                (sb!c::*current-path*
@@ -252,6 +251,7 @@
                         (and (symbolp (first form))
                              (macro-function (first form)))))))
     (eval form))
+  (check-type *context* context)
   (values
    (cond
      ((self-evaluating-p form)

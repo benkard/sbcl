@@ -289,10 +289,9 @@
       (sb!eval2:make-null-environment)
       (sb!eval2::prepare-form
        (sb!eval2::call-with-context
-        (sb!eval2::make-null-context)
+        (sb!eval2:native-environment->context lexenv)
         (lambda ()
           (sb!eval2::compile-form exp
-                                  (sb!eval2:native-environment->context lexenv)
                                   (if sb!impl::*eval-tlf-index*
                                       :not-compile-time
                                       :execute)))))))
