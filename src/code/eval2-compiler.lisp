@@ -240,6 +240,18 @@
                                                (boundp 'sb!c::*current-path*))
                                            (sb!c::source-form-has-path-p form))
                                   (sb!c::ensure-source-path form))))
+  (when (and (eq mode :compile-time-too)
+             (not (and (consp form)
+                       (or
+                        ;; specially processed toplevel form?
+                        (member (first form)
+                                '(progn locally macrolet symbol-macrolet))
+                        ;; local macro?
+                        (context-find-macro *context* (first form))
+                        ;; global macro?
+                        (and (symbolp (first form))
+                             (macro-function (first form)))))))
+    (eval form))
   (values
    (cond
      ((self-evaluating-p form)
@@ -327,9 +339,11 @@
                              (lt
                               (compile-progn body :not-compile-time))
                              (ct
-                              (compile-progn body))
+                              (eval `(progn ,@body))
+                              (compile-nil))
                              ((and e (eq mode :compile-time-too))
-                              (compile-progn body))
+                              (eval `(progn ,@body))
+                              (compile-nil))
                              (t
                               (compile-nil)))))
                     ((or (member :execute times)
