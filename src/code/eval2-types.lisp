@@ -87,8 +87,9 @@
                       :test #'equal
                       :key #'lexical-name))
          (not (member symmac (context-specials context) :test #'equal))
-         (or (cdr (assoc (the symbol symmac) (context-symbol-macros context)))
-             (and parent (list (context-find-symbol-macro parent symmac)))))))
+         (or (let ((record? (assoc (the symbol symmac) (context-symbol-macros context))))
+               (and record? (list (cdr record?))))
+             (and parent (context-find-symbol-macro parent symmac))))))
 (defun context-find-macro (context mac)
   (let ((parent (context-parent context)))
     (and (not (member `(function ,mac)
