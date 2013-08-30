@@ -384,26 +384,6 @@ children of CONTEXT can be stack-allocated."
               (prepare-global-call f args))))))))
    t))
 
-#+(or)
-(defun eval (form &optional (env (make-null-environment)))
-  (with-environment (env)
-    (funcall (prepare-form form (make-null-context) :execute))))
-
-#+(or)
-(defun eval-tlf (form &optional (env (make-null-environment)))
-  (with-environment env
-    (funcall (prepare-form form (make-null-context) :not-compile-time))))
-
-
-#+(or)
-(defun load (filename)
-  ;;FIXME: set :LOAD-TOPLEVEL time.
-  (let ((eof (gensym)))
-    (with-open-file (in filename)
-      (loop for form = (read in nil eof nil)
-            until (eq form eof)
-            do (eval-tlf form)))))
-
 
 #+(or)
 (with-environment (make-null-environment)
@@ -417,6 +397,7 @@ children of CONTEXT can be stack-allocated."
                                    x))
                                3)
                               5 7))))))
+;; => 38
 
 #+(or)
 (with-environment (make-null-environment)
