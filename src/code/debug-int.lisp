@@ -717,7 +717,7 @@
 
 (defun interpreter-frame-environment (frame)
   (let* ((debug-fun (frame-debug-fun frame))
-         (env-var (first (debug-fun-lambda-list debug-fun))))
+         (env-var (first (debug-fun-symbol-vars debug-fun 'sb!eval2::env))))
     (and env-var
          (not (eq env-var :deleted))
          (ignore-errors
@@ -835,7 +835,7 @@
                                           :format-control "Frame ~S has an invalid closure pointer (~S)"
                                           :format-arguments (list eval-closure-frame closure?))))))
                (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
-               (env (interpreter-frame-environment eval-closure-frame))
+               (env (interpreter-frame-environment frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))
                (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
                (more-context (debug-var-value (first more-info) frame))
