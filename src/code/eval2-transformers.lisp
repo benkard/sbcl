@@ -96,7 +96,7 @@
        (labels (,@(rest sections))
          (%block ,block-name
            (let (,return-value-sym)
-             (loop
+             (%loop
                (setq ,return-value-sym
                      (catch ',catch-tag
                        (if ,return-value-sym

@@ -299,6 +299,8 @@
            ((%lambda)
             (destructuring-bind (info &rest body) (rest form)
               `(%lambda ,info ,@(mapcar #'compile-form body))))
+           ((%loop)
+            `(%loop ,@(mapcar #'compile-form (rest form))))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (compile-form a))
