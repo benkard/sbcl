@@ -14,10 +14,10 @@
 
 (defmacro %block (block-name &body body)
   (let ((catch-tag (gensym)))
-    `(macrolet ((,+block-mapping-sym+ ()
-                  `(quote ,(acons ',block-name
-                                  ',catch-tag
-                                  (,+block-mapping-sym+)))))
+    `(symbol-macrolet ((,+block-mapping-sym+
+                         `(quote ,(acons ',block-name
+                                         ',catch-tag
+                                         ,+block-mapping-sym+))))
        (catch ',catch-tag
          ,@body))))
 
@@ -105,16 +105,16 @@
                                         ',end-marker)))
                                  nil))))))
                    body)))
-    `(macrolet ((,+go-tag-catch-tag-mapping-sym+ ()
-                  (list 'quote
-                        (list* ,@(mapcar (lambda (x) (list 'quote x))
-                                         labels-and-catch-tags)
-                               (,+go-tag-catch-tag-mapping-sym+))))
-                (,+go-tag-function-mapping-sym+ ()
-                  (list 'quote
-                        (list* ,@(mapcar (lambda (x) (list 'quote x))
-                                         labels-and-functions)
-                               (,+go-tag-function-mapping-sym+)))))
+    `(symbol-macrolet ((,+go-tag-catch-tag-mapping-sym+
+                         (list 'quote
+                               (list* ,@(mapcar (lambda (x) (list 'quote x))
+                                                labels-and-catch-tags)
+                                      ,+go-tag-catch-tag-mapping-sym+)))
+                       (,+go-tag-function-mapping-sym+
+                         (list 'quote
+                               (list* ,@(mapcar (lambda (x) (list 'quote x))
+                                                labels-and-functions)
+                                      ,+go-tag-function-mapping-sym+))))
        (labels (,@(rest sections))
          (%block ,block-name
            (let (,return-value-sym)
