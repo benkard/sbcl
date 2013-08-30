@@ -4,8 +4,7 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(defvar *mode* :not-compile-time)
-(defvar *form*)
+(defvar *mode* :execute)
 (defvar *env*)
 
 (declaim (inline call-with-environment))
@@ -153,7 +152,7 @@ children of CONTEXT can be stack-allocated."
 (declaim (ftype (function (list &optional symbol)
                           (values eval-closure &rest nil))
                 prepare-progn))
-(defun prepare-progn (forms &optional (*mode* *mode*))
+(defun prepare-progn (forms)
   (let ((body* (mapcar (lambda (form) (prepare-form form)) forms)))
     (if (null body*)
         (prepare-nil)
@@ -190,11 +189,8 @@ children of CONTEXT can be stack-allocated."
                 (*argnum* (length *args*)))
             (funcall body*)))))))
 
-(declaim (ftype (function (* &optional symbol) eval-closure) prepare-form))
-(defun prepare-form (form &optional (mode *mode*)
-                          &aux (*mode* :execute)
-                               (*form* form)
-                               #+sbcl
+(declaim (ftype (function (*) eval-closure) prepare-form))
+(defun prepare-form (form &aux #+sbcl
                                (sb!c::*current-path*
                                 (when (and (boundp 'sb!c::*source-paths*)
                                            (or (sb!c::get-source-path form)
@@ -312,7 +308,7 @@ children of CONTEXT can be stack-allocated."
                       (funcall values-form*)
                     (funcall body*))))))
            ((progn)
-            (prepare-progn (rest form) mode))
+            (prepare-progn (rest form)))
            ((%with-binding)
             (destructuring-bind (val var &body body) (rest form)
               (let ((val* (prepare-form val))
