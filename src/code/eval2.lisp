@@ -287,7 +287,7 @@ children of CONTEXT can be stack-allocated."
             (prepare-nil))
            ((load-time-value)
             (let ((load-form (cadr form)))
-              ;; FIXME
+              ;; FIXME?
               (prepare-form load-form)))
            ((multiple-value-call)
             (destructuring-bind (f &rest argforms) (rest form)

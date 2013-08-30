@@ -465,8 +465,8 @@
                                                  `((%envset ,nesting ,offset ,val*)
                                                    ,@(iter (rest remaining-bindings))))))))))))))))))
             ((load-time-value)
-             ;;??????
-             )
+             (destructuring-bind (form) (rest form)
+              `(load-time-value ,(compile-form form))))
             ((locally)
              (destructuring-bind (&rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
