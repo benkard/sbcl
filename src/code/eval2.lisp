@@ -183,10 +183,10 @@ children of CONTEXT can be stack-allocated."
 (defvar *envbox*)
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
-(defun prepare-lambda (body name current-path source-info)
-  (declare (ignorable name current-path source-info))
+(defun prepare-lambda (body name current-path source-location)
+  (declare (ignorable name current-path source-location))
   (let ((body* (prepare-progn body)))
-    (eval-lambda ()
+    (eval-lambda (current-path source-location)
       (let ((env *env*)
             ;; ENVBOX holds a box that points to the lambda's body
             ;; environment.  It is set by the body %LET through the
@@ -194,7 +194,7 @@ children of CONTEXT can be stack-allocated."
             ;;
             ;; This is useful mainly for debugging purposes.
             (envbox (make-array '())))
-        (interpreted-lambda (name current-path source-info)
+        (interpreted-lambda (name current-path source-location)
                             #-sbcl (&rest *args*)
                             #+sbcl (sb!int:&more *more* *argnum*)
           ;;(declare (dynamic-extent *args*))

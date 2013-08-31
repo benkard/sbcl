@@ -139,11 +139,17 @@
                          (some (lambda (x) (maybe-closes-p *context* x))
                                default-values))))
           (setq varspecs (nreverse varspecs))
-          (let ((current-path #+sbcl (and (boundp 'sb!c::*current-path*) sb!c::*current-path*))
-                (source-info #+sbcl (and (boundp 'sb!c::*source-info*) sb!c::*source-info*))
-                (i 0))
-            (declare (ignorable current-path source-info))
-            `(%lambda (,name ,current-path ,source-info)
+          (let* ((current-path #+sbcl (when (boundp 'sb!c::*current-path*)
+                                        sb!c::*current-path*))
+                 (source-location
+                   #+sbcl (when
+                              (and current-path
+                                   (typep (car (last current-path))
+                                          '(or fixnum null)))
+                            (sb!c::make-definition-source-location)))
+                 (i 0))
+            (declare (ignorable current-path source-location))
+            `(%lambda (,name ,current-path ,source-location)
                ,(compile-form
                  `(when (< %argnum ,required-num)
                     (error 'simple-program-error

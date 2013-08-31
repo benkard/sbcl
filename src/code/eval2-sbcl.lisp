@@ -4,7 +4,6 @@
                    (sb!c::store-closure-debug-pointer 3)))
 
 (defvar *source-paths* (make-hash-table :weakness :key :test #'eq))
-(defvar *source-info* (make-hash-table :weakness :key :test #'eq))
 (defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
 (defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
 (defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
@@ -17,50 +16,50 @@
   (setf (gethash function *interpreted-functions*) (and val t)))
 (defun source-path (eval-closure)
   (gethash eval-closure *source-paths*))
-(defun source-info (eval-closure)
-  (gethash eval-closure *source-info*))
 (defun source-location (eval-closure)
   (gethash eval-closure *source-locations*))
 (defun (setf source-path) (val eval-closure)
   (setf (gethash eval-closure *source-paths*) val))
-(defun (setf source-info) (val eval-closure)
-  (setf (gethash eval-closure *source-info*) val))
 (defun (setf source-location) (val eval-closure)
   (setf (gethash eval-closure *source-locations*) val))
 
 
-(defun annotate-lambda-with-source (closure)
-  (when (and (boundp 'sb!c::*current-path*)
-             (boundp 'sb!c::*source-info*)
-             (typep (car (last sb!c::*current-path*)) '(or fixnum null)))
+(defun annotate-lambda-with-source (closure &optional
+                                            (current-path
+                                             (when (boundp 'sb!c::*current-path*)
+                                               sb!c::*current-path*))
+                                            (source-location
+                                             (when (and current-path
+                                                        (typep (car (last current-path))
+                                                               '(or fixnum null)))
+                                               (sb!c::make-definition-source-location))))
+  (when source-location
     ;; XXX It's strange that (car (last sb!c::*current-path*)) can
     ;; ever be a non-fixnum.  This seemingly occurs only in the
-    ;; context of #. evaluation (where *source-info* etc. are bound
+    ;; context of #. evaluation (where *source-path* etc. are bound
     ;; but not relevant for the form we are processing).
-    (setf (source-path closure) sb!c::*current-path*)
-    (setf (source-info closure) sb!c::*source-info*)
-    (setf (source-location closure) (sb!c::make-definition-source-location)))
+    (setf (source-path closure) current-path)
+    (setf (source-location closure) source-location))
   closure)
-(defun annotate-interpreted-lambda-with-source (closure current-path source-info)
-  (when (and current-path source-info)
-    (let ((sb!c::*current-path* current-path)
-          (sb!c::*source-info* source-info))
-      (annotate-lambda-with-source closure)))
+(defun annotate-interpreted-lambda-with-source (closure current-path source-location)
+  (annotate-lambda-with-source closure current-path source-location)
   (setf (interpreted-function-p closure) t)
   closure)
-(defmacro eval-lambda (lambda-list &body body)
+(defmacro eval-lambda ((&optional current-path source-loc) &body body)
   `(annotate-lambda-with-source
-    (sb!int:named-lambda eval-closure ,lambda-list
+    (sb!int:named-lambda eval-closure ()
       (declare (optimize sb!c::store-closure-debug-pointer debug (safety 0)))
-      ,@body)))
-(defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
+      ,@body)
+    ,current-path
+    ,source-loc))
+(defmacro interpreted-lambda ((name current-path source-loc) lambda-list &body body)
   (declare (ignore name))
   `(annotate-interpreted-lambda-with-source
     (sb!int:named-lambda interpreted-function ,lambda-list
       (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)
     ,current-path
-    ,source-info))
+    ,source-loc))
 
 (defun self-evaluating-p (form)
   (sb!int:self-evaluating-p form))
