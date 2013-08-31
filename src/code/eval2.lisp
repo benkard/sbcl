@@ -217,11 +217,9 @@ children of CONTEXT can be stack-allocated."
      (t
       (etypecase form
         (symbol
-         (case form
+         (ecase form
            ((%argnum)
-            (eval-lambda () *argnum*))
-           (otherwise
-            (prepare-symbol-ref form))))
+            (eval-lambda () *argnum*))))
         (cons
          (case (first form)
            ((%with-environment)
@@ -331,12 +329,11 @@ children of CONTEXT can be stack-allocated."
               (eval-lambda ()
                 (loop (funcall body*)))))
            ((%with-binding)
-            (destructuring-bind (val var &body body) (rest form)
+            (destructuring-bind (var val &body body) (rest form)
               (let ((val* (prepare-form val))
-                    (var* (prepare-form var))
                     (body* (prepare-progn body)))
                 (eval-lambda ()
-                  (progv (list (funcall val*)) (list (funcall var*))
+                  (progv (list var) (list (funcall val*))
                     (funcall body*))))))
            ((progv)
             (destructuring-bind (vals vars &body body) (rest form)
