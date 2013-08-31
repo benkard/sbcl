@@ -210,8 +210,6 @@
           `(%varget ,var)
           (progn
             (assume-special *context* var)
-            (unless (boundp var)
-              (error 'unbound-variable :name var))
             `(%varget ,var)))))
 
 (defun compile-function-ref (function-name)

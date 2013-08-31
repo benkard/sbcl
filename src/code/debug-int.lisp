@@ -702,8 +702,9 @@
   (let ((debug-info (and env (sb!eval2::environment-debug-record env))))
     (when debug-info
       (let* ((context (and debug-info (sb!eval2::debug-record-context debug-info)))
-             (vars    (mapcar #'sb!eval2::lexical-name
-                              (sb!eval2::context-collect context 'sb!eval2::context-lexicals))))
+             (vars    (remove-if #'consp
+                                 (mapcar #'sb!eval2::lexical-name
+                                         (sb!eval2::context-collect context 'sb!eval2::context-lexicals)))))
         (flet ((make-debug-var (var)
                  (let ((lexical
                          (sb!eval2::context-find-lexical context var)))
