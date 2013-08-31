@@ -256,10 +256,12 @@
    (cond
      ((self-evaluating-p form)
       ;;FIXME load forms?
+      ;;(format t "~&~S" form)
       form)
      (t
       (etypecase form
         (symbol
+         ;;(format t "~&~S" form)
          (case form
            ((%argnum)
             form)
@@ -272,6 +274,7 @@
                     (t
                      (compile-ref form)))))))
         (cons
+         ;;(format t "(~&~S)" (first form))
          (case (first form)
            ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox)
             form)
@@ -373,7 +376,7 @@
                                  (assume-special *context* var)
                                  (prevent-constant-modification var)
                                  (compile-form
-                                  `(%varset ,var ,valform)))))))            
+                                  `(%varset ,var ,valform)))))))
             ((flet labels)
              (destructuring-bind (bindings &rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
@@ -481,13 +484,15 @@
                    (compile-form `(values (setf (values ,@vars) ,values-form)))
                    (compile-form `(values ,values-form)))))
             ((multiple-value-bind)
-             (destructuring-bind (vars form &rest exprs) (rest form)
+             (destructuring-bind (vars values-form &rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
                  (compile-form
-                  `(let ,vars
-                     (declare (special ,@specials))
-                     (setf (values ,vars) ,form)
-                     ,@body)))))
+                  (let ((rsym (gensym)))
+                    `(multiple-value-call
+                         (lambda (&optional ,@vars &rest ,rsym)
+                           (declare (special ,@specials) (ignore ,rsym))
+                           ,@body)
+                       ,values-form))))))
             ((quote)
              form)
             #+sbcl
@@ -534,7 +539,7 @@
                                   (context-add-macros *context* bindings)
                                   specials)
                      (compile-progn body mode))))))
-            ((catch unwind-protect multiple-value-call multiple-value-prog1 progv
+            ((catch unwind-protect multiple-value-prog1 multiple-value-call progv
               the throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))
             ((progn)
