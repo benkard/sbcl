@@ -665,23 +665,6 @@
 (defun descriptor-sap (x)
   (int-sap (get-lisp-obj-address x)))
 
-;;;
-;;;
-#+(or)
-(defun make-interpreted-frame (source-info
-                               source-path
-                               real-frame
-                               up-frame
-                               frame-number
-                               context
-                               env)
-  (%make-interpreted-frame
-   up-frame
-   (make-interpreted-debug-fun ...)
-   (make-interpreted-code-location source-info source-path)
-   frame-number
-   real-frame))
-
 
 ;;
 ;;

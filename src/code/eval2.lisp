@@ -204,13 +204,7 @@ children of CONTEXT can be stack-allocated."
             (funcall body*)))))))
 
 (declaim (ftype (function (*) eval-closure) prepare-form))
-(defun prepare-form (form &aux #+sbcl
-                               (sb!c::*current-path*
-                                (when (and (boundp 'sb!c::*source-paths*)
-                                           (or (sb!c::get-source-path form)
-                                               (boundp 'sb!c::*current-path*))
-                                           (sb!c::source-form-has-path-p form))
-                                  (sb!c::ensure-source-path form))))
+(defun prepare-form (form)
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
   (values
    (cond
