@@ -29,7 +29,6 @@
 (define-symbol-macro go-tag-catch-tag-mapping nil)
 
 (defmacro %go (tag &environment env)
-  (print env)
   `(throw ',(cdr (assoc tag (macroexpand 'go-tag-catch-tag-mapping env)
                         :test 'eq))
      (function ,(cdr (assoc tag (macroexpand 'go-tag-function-mapping env)
