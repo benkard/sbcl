@@ -494,9 +494,6 @@
             ((quote)
              form)
             #+sbcl
-            ((sb!ext:truly-the)
-             `(sb!ext:truly-the ,@(mapcar #'compile-form (rest form))))
-            #+sbcl
             ((sb!int:named-lambda)
              (compile-lambda (cddr form) :name (cadr form)))
             #+ccl
@@ -538,8 +535,10 @@
                                   specials)
                      (compile-progn body mode))))))
             ((catch unwind-protect multiple-value-prog1 multiple-value-call progv
-              the throw)
+              throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))
+            ((the #+sbcl sb!ext:truly-the)
+             `(,(first form) ,(second form) ,(compile-form (third form))))
             ((progn)
              (compile-progn (rest form) mode))
             ((block)
