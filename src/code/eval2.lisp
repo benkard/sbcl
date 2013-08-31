@@ -8,11 +8,13 @@
 (defvar *env*)
 
 (declaim (inline call-with-environment))
+(declaim (ftype (function (environment function) *) call-with-environment))
 (defun call-with-environment (env thunk)
   (let ((*env* env))
     (funcall thunk)))
 
 ;;(declaim (inline call-with-context))
+(declaim (ftype (function (context function) *) call-with-context))
 (defun call-with-context (context thunk)
   (let ((*context* context))
     (declare (special *context*))
@@ -149,7 +151,7 @@ children of CONTEXT can be stack-allocated."
       (apply (the (or symbol function) (funcall (the eval-closure f)))
              (mapcar (lambda (x) (funcall (the eval-closure x))) args*)))))
 
-(declaim (ftype (function (list &optional symbol)
+(declaim (ftype (function (list)
                           (values eval-closure &rest nil))
                 prepare-progn))
 (defun prepare-progn (forms)
@@ -180,9 +182,9 @@ children of CONTEXT can be stack-allocated."
 (defvar *more*)
 (defvar *envbox*)
 
-(declaim (ftype (function * *) prepare-lambda))
+(declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (body name current-path source-info)
-  (declare (ignorable name))
+  (declare (ignorable name current-path source-info))
   (let ((body* (prepare-progn body)))
     (eval-lambda ()
       (let ((env *env*)
@@ -278,7 +280,7 @@ children of CONTEXT can be stack-allocated."
             (destructuring-bind (f &rest args) (rest form)
               (prepare-global-call f args)))
            ((%set-envbox)
-            (eval-lambda () (setf (aref *envbox*) *env*)))
+            (eval-lambda () (setf (aref (the (simple-array t ()) *envbox*)) *env*)))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (prepare-form a))
