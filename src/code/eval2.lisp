@@ -240,6 +240,21 @@ children of CONTEXT can be stack-allocated."
               (eval-lambda ()
                 #+sbcl (nthcdr i (multiple-value-list (sb!c:%more-arg-values *more* *argnum*)))
                 #-sbcl (nthcdr i *args*))))
+           ((%checkargs)
+            (destructuring-bind (min &optional max)
+                (rest form)
+              (declare (fixnum min) (type (or fixnum null) max))
+              (eval-lambda ()
+                (let ((argnum *argnum*))
+                  (declare (fixnum argnum))
+                  (when (< argnum min)
+                    (error 'simple-program-error
+                           :format-control "invalid number of arguments: ~D (expected: >=~D)"
+                           :format-arguments (list argnum min)))
+                  (when (and max (> argnum max))
+                    (error 'simple-program-error
+                           :format-control "invalid number of arguments: ~D (expected: <=~D)"
+                           :format-arguments (list argnum max)))))))
            ((%varget)
             (destructuring-bind (var) (rest form)
               (eval-lambda ()

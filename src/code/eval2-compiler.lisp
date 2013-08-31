@@ -151,18 +151,6 @@
             (declare (ignorable current-path source-location))
             `(%lambda (,name ,current-path ,source-location)
                ,(compile-form
-                 `(when (< %argnum ,required-num)
-                    (error 'simple-program-error
-                           :format-control "invalid number of arguments: ~D (expected: >=~D)"
-                           :format-arguments (list %argnum ,required-num))))
-               ,@(unless (or keyp restp)
-                   (list
-                    (compile-form
-                     `(when (> %argnum ,(+ required-num optional-num))
-                        (error 'simple-program-error
-                               :format-control "invalid number of arguments: ~D (expected: >=~D)"
-                               :format-arguments (list %argnum ,required-num))))))
-               ,(compile-form
                  `(%let* (,lambda-list ,name t)
                          (,@(loop for arg in required
                                   collect `(,arg (%getarg ,i))
@@ -194,6 +182,8 @@
                                   for default = (lambda-binding-default arg)
                                   collect `(,var ,default)))
                     (declare (special ,@specials))
+                    (%checkargs ,required-num
+                                ,(unless (or keyp restp) (+ required-num optional-num)))
                     ,@(when (and keyp (not allowp))
                         `((unless (getf ,rest :allow-other-keys nil)
                             (let ((to-check ,rest))
@@ -280,7 +270,8 @@
         (cons
          ;;(format t "(~&~S)" (first form))
          (case (first form)
-           ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox)
+           ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox
+             %checkargs)
             form)
            ((%varset)
             (destructuring-bind (var val) (rest form)
