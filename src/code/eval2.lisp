@@ -5,7 +5,9 @@
                    (sb!c::store-closure-debug-pointer 3)))
 
 (defvar *mode* :execute)
-(defvar *env*)
+
+(declaim (type environment *env*))
+(defvar *env* (make-null-environment))
 
 (declaim (inline call-with-environment))
 (declaim (ftype (function (environment function) *) call-with-environment))
@@ -108,9 +110,11 @@ children of CONTEXT can be stack-allocated."
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
           (let ((argvars (loop for i from 0 below m%
                                collect (gensym (format nil "ARG~D-" i)))))
-            `(let ,(loop for var in argvars
-                         for i from 0 below m%
-                         collect `(,var (nth ,i args*)))
+            `(let* ((my-args* args*)
+                    ,@(loop for var in argvars
+                            for i from 0 below m%
+                            collect `(,var (pop my-args*))))
+               (declare (ignorable my-args*))
                (eval-lambda ()
                  (funcall (the function (environment-value *env* nesting offset))
                           ,@(loop for var in argvars
@@ -128,9 +132,11 @@ children of CONTEXT can be stack-allocated."
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
           (let ((argvars (loop for i from 0 below m%
                                collect (gensym (format nil "ARG~D-" i)))))
-            `(let ,(loop for var in argvars
-                         for i from 0 below m%
-                         collect `(,var (nth ,i args*)))
+            `(let* ((my-args* args*)
+                    ,@(loop for var in argvars
+                            for i from 0 below m%
+                            collect `(,var (pop my-args*))))
+               (declare (ignorable my-args*))
                (eval-lambda ()
                  (funcall #+sbcl (or (sb!c::fdefn-fun f*)
                                      (error 'undefined-function :name f))
