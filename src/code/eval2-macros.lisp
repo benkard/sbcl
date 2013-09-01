@@ -18,7 +18,7 @@
                 ;; stack unless we can be sure that all child
                 ;; environments will also be allocated on the stack,
                 ;; but we can't really know that.
-                ;(dynamic-extent ,var)
+                (dynamic-extent ,var)
                 (dynamic-extent ,data%))
        ,@body)))
 
