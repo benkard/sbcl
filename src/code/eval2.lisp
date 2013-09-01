@@ -219,16 +219,20 @@ children of CONTEXT can be stack-allocated."
         (cons
          (case (first form)
            ((%with-environment)
-            (destructuring-bind (extent (debug-info varnum) &rest body) (rest form)
+            (destructuring-bind (extent set-box-p (debug-info varnum) &rest body) (rest form)
               (let ((body* (prepare-progn body)))
                 (ecase extent
                   ((:indefinite-extent)
                    (eval-lambda ()
                      (with-indefinite-extent-environment (*env* debug-info *env* varnum)
+                       (when set-box-p
+                         (setf (aref (the (simple-array t ()) *envbox*)) *env*))
                        (funcall body*))))
                   ((:dynamic-extent)
                    (eval-lambda ()
                      (with-dynamic-extent-environment (*env* debug-info *env* varnum)
+                       (when set-box-p
+                         (setf (aref (the (simple-array t ()) *envbox*)) *env*))
                        (funcall body*))))))))
            ((%getarg)
             (destructuring-bind (i) (rest form)
@@ -295,8 +299,6 @@ children of CONTEXT can be stack-allocated."
            ((%global-call)
             (destructuring-bind (f &rest args) (rest form)
               (prepare-global-call f args)))
-           ((%set-envbox)
-            (eval-lambda () (setf (aref (the (simple-array t ()) *envbox*)) *env*)))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (prepare-form a))

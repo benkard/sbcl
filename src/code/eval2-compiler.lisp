@@ -293,8 +293,8 @@
             (destructuring-bind (var val &body body) (rest form)
               `(%with-binding ,var ,val ,(mapcar #'compile-form body))))
            ((%with-environment)
-            (destructuring-bind (extent info &rest body) (rest form)
-              `(%with-binding ,extent ,info ,@(mapcar #'compile-form body))))
+            (destructuring-bind (extent box-p info &rest body) (rest form)
+              `(%with-environment ,extent ,box-p ,info ,@(mapcar #'compile-form body))))
            ((%local-call)
             (destructuring-bind (nesting offset &rest args) (rest form)
               `(%local-call ,nesting ,offset ,@(mapcar #'compile-form args))))
@@ -397,7 +397,7 @@
                           (make-debug-record body-context))
                         (varnum
                           (length bindings)))
-                  `(%with-environment :indefinite-extent (,debug-info ,varnum)
+                  `(%with-environment :indefinite-extent nil (,debug-info ,varnum)
                      ,@(loop for (name lambda-list . body) in bindings
                              for i from 0
                              collect
@@ -436,9 +436,7 @@
                         (debug-info
                           (make-debug-record body-context lambda-list function-name)))
                    (with-context binding-context
-                     `(%with-environment :indefinite-extent (,debug-info ,varnum)
-                        ,@(when set-box-p
-                            `((%set-envbox)))
+                     `(%with-environment :indefinite-extent ,set-box-p (,debug-info ,varnum)
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
                            `(,@(if (eq (first form) '%let)
