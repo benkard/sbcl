@@ -797,7 +797,10 @@
                    '(sb!c::&more-processor
                      (flet sb!eval2::handle-arguments :in sb!eval2::prepare-lambda)))
             (equal (debug-fun-name (frame-debug-fun frame))
-                   'sb!eval2::eval-closure))
+                   'sb!eval2::eval-closure)
+            (and (listp (debug-fun-name (frame-debug-fun frame)))
+                 (eq 'sb!eval2::eval-closure
+                     (first (debug-fun-name (frame-debug-fun frame))))))
     (return-from possibly-an-interpreted-frame
       (frame-down frame)))
   (unless (eq (debug-fun-name (frame-debug-fun frame))
@@ -806,8 +809,10 @@
       frame))
   (let ((eval-closure-frame (frame-find-upframe-if
                              (lambda (x)
-                               (eq (debug-fun-name (frame-debug-fun x))
-                                   'sb!eval2::eval-closure))
+                               (let ((fname (debug-fun-name (frame-debug-fun x))))
+                                 (or (eq fname 'sb!eval2::eval-closure) 
+                                     (and (listp fname)
+                                          (eq 'sb!eval2::eval-closure (first fname))))))
                              up-frame)))
     (if (null eval-closure-frame)
         (frame-down frame)

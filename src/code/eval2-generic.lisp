@@ -3,8 +3,8 @@
 ;;#!-sbcl
 (in-package "SB-EVAL2")
 
-(defmacro eval-lambda (lambda-list &body body)
-  `(lambda ,lambda-list ,@body))
+(defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
+  `(lambda () ,@body))
 
 (defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
   (declare (ignore name current-path source-info))

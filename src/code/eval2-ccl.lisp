@@ -4,8 +4,11 @@
       (find-class 'ccl::simple-program-error))
 
 
-(defmacro eval-lambda (lambda-list &body body)
-  `(ccl:nfunction eval-closure (lambda ,lambda-list ,@body)))
+(defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
+  `(ccl:nfunction ,(if kind
+                       `(eval-closure ,kind)
+                       'eval-closure)
+                  (lambda ,lambda-list ,@body)))
 
 (defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
   (declare (ignore current-path source-info))
