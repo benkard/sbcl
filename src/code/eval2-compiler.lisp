@@ -110,6 +110,9 @@
                 (symbol (keywordify (first entry)))))
       (symbol (keywordify entry)))))
 
+(defun disjointp (list1 list2)
+  (null (intersection list1 list2)))
+
 (defun compile-lambda (lambda-form &key (name nil))
   ;;#+sbcl (declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
@@ -152,6 +155,10 @@
             `(%lambda (,name ,current-path ,source-location)
                ,(compile-form
                  `(%let* (,lambda-list ,name t)
+                         ,(if (disjointp specials required)
+                              `(,required
+                                (%fetchargs ,required-num))
+                              nil)
                          (,@(loop for arg in required
                                   collect `(,arg (%getarg ,i))
                                   do (incf i))
@@ -401,11 +408,12 @@
                      ,@(with-context body-context
                          (mapcar #'compile-form body)))))))
             ((let)
-             (compile-form `(%let (:none nil) ,@(rest form))))
+             (compile-form `(%let (:none nil) () ,@(rest form))))
             ((let*)
-             (compile-form `(%let* (:none nil) ,@(rest form))))
+             (compile-form `(%let* (:none nil) () ,@(rest form))))
             ((%let %let*)
              (destructuring-bind ((lambda-list function-name &optional set-box-p)
+                                  (&optional noinit-vars &rest init-block)
                                   bindings &rest exprs)
                  (rest form)
                (with-parsed-body (body specials) exprs
@@ -436,7 +444,8 @@
                            `(,@(if (eq (first form) '%let)
                                    `(progv (,dynvars-sym ,dynvals-sym) ())
                                    `(progn))
-                              ,@(nlet iter ((remaining-bindings real-bindings))
+                             ,@init-block
+                             ,@(nlet iter ((remaining-bindings real-bindings))
                                  (if (endp remaining-bindings)
                                      (if (eq (first form) '%let)
                                          `((progv ,dynvars-sym ,dynvals-sym
@@ -463,7 +472,8 @@
                                                (let* ((lexical (context-find-lexical body-context var))
                                                       (nesting (lexical-nesting lexical))
                                                       (offset (lexical-offset lexical)))
-                                                 `((%envset ,nesting ,offset ,val*)
+                                                 `(,@(unless (member var noinit-vars)
+                                                       `((%envset ,nesting ,offset ,val*)))
                                                    ,@(iter (rest remaining-bindings))))))))))))))))))
             ((load-time-value)
              (destructuring-bind (form) (rest form)
