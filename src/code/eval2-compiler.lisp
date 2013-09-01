@@ -422,7 +422,7 @@
                         (binding-context
                           (context-add-env-lexicals *context* (list)))
                         (body-context
-                          (if (eq (first form) 'let)
+                          (if (eq (first form) '%let)
                               (context-add-env-lexicals *context* (list))
                               binding-context))
                         (debug-info
@@ -433,12 +433,12 @@
                             `((%set-envbox)))
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
-                           `(,@(if (eq (first form) 'let)
+                           `(,@(if (eq (first form) '%let)
                                    `(progv (,dynvars-sym ,dynvals-sym) ())
                                    `(progn))
                               ,@(nlet iter ((remaining-bindings real-bindings))
                                  (if (endp remaining-bindings)
-                                     (if (eq (first form) 'let)
+                                     (if (eq (first form) '%let)
                                          `((progv ,dynvars-sym ,dynvals-sym
                                              ,@(with-context body-context
                                                  (mapcar #'compile-form body))))
@@ -452,7 +452,7 @@
                                                  (globally-special-p var))
                                              (progn
                                                (context-add-special! body-context var)
-                                               (if (eq (first form) 'let)
+                                               (if (eq (first form) '%let)
                                                    `((%varpush ,val* ,dynvals-sym)
                                                      (%varpush ',var ,dynvars-sym)
                                                      ,@(iter (rest remaining-bindings)))
