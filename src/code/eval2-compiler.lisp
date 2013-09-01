@@ -442,13 +442,14 @@
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
                            `(,@(if (eq (first form) '%let)
-                                   `(progv (,dynvars-sym ,dynvals-sym) ())
+                                   `(progv '(,dynvars-sym ,dynvals-sym) '(nil nil))
                                    `(progn))
                              ,@init-block
                              ,@(nlet iter ((remaining-bindings real-bindings))
                                  (if (endp remaining-bindings)
                                      (if (eq (first form) '%let)
-                                         `((progv ,dynvars-sym ,dynvals-sym
+                                         `((progv (%varget ,dynvars-sym)
+                                                  (%varget ,dynvals-sym)
                                              ,@(with-context body-context
                                                  (mapcar #'compile-form body))))
                                          `(,@(with-context body-context
