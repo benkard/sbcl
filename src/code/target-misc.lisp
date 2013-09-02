@@ -80,7 +80,9 @@
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-debug-lambda-list function))
     (t
-     (%simple-fun-arglist (%fun-fun function)))))
+     (if (sb!eval2::interpreted-function-p function)
+         (sb!eval2::interpreted-function-lambda-list function)
+         (%simple-fun-arglist (%fun-fun function))))))
 
 (defun (setf %fun-lambda-list) (new-value function)
   (typecase function
@@ -89,7 +91,9 @@
      (setf (sb!eval:interpreted-function-debug-lambda-list function) new-value))
     ;; FIXME: Eliding general funcallable-instances for now.
     ((or simple-fun closure)
-     (setf (%simple-fun-arglist (%fun-fun function)) new-value)))
+     (if (sb!eval2::interpreted-function-p function)
+         (setf (sb!eval2::interpreted-function-lambda-list function) new-value)
+         (setf (%simple-fun-arglist (%fun-fun function)) new-value))))
   new-value)
 
 (defun %fun-type (function)
@@ -104,7 +108,9 @@
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-debug-name function))
     (t
-     (%simple-fun-name (%fun-fun function)))))
+     (if (sb!eval2::interpreted-function-p function)
+         (sb!eval2::interpreted-function-name function)
+         (%simple-fun-name (%fun-fun function))))))
 
 (defun (setf %fun-name) (new-value function)
   (typecase function
@@ -113,7 +119,9 @@
      (setf (sb!eval:interpreted-function-debug-name function) new-value))
     ;; FIXME: Eliding general funcallable-instances for now.
     ((or simple-fun closure)
-     (setf (%simple-fun-name (%fun-fun function)) new-value)))
+     (if (sb!eval2::interpreted-function-p function)
+         (setf (sb!eval2::interpreted-function-name function) new-value)
+         (setf (%simple-fun-name (%fun-fun function)) new-value))))
   new-value)
 
 (defun %fun-doc (function)
@@ -122,7 +130,9 @@
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-documentation function))
     (t
-     (%simple-fun-doc (%fun-fun function)))))
+     (if (sb!eval2::interpreted-function-p function)
+         (sb!eval2::interpreted-function-doc function)
+         (%simple-fun-doc (%fun-fun function))))))
 
 (defun (setf %fun-doc) (new-value function)
   (declare (type (or null string) new-value))
@@ -131,7 +141,9 @@
     (sb!eval:interpreted-function
      (setf (sb!eval:interpreted-function-documentation function) new-value))
     ((or simple-fun closure)
-     (setf (%simple-fun-doc (%fun-fun function)) new-value)))
+     (if (sb!eval2::interpreted-function-p function)
+         (setf (sb!eval2::interpreted-function-name function) new-value)
+         (setf (%simple-fun-doc (%fun-fun function)) new-value))))
   new-value)
 
 ;;; various environment inquiries

@@ -193,7 +193,7 @@ children of CONTEXT can be stack-allocated."
 (defvar *envbox*)
 
 (declaim (ftype (function * eval-closure) prepare-lambda))
-(defun prepare-lambda (body name current-path source-location)
+(defun prepare-lambda (body name current-path source-location lambda-list doc)
   (declare (ignorable name current-path source-location))
   (let ((body* (prepare-progn body)))
     (eval-lambda (env) (%lambda current-path source-location)
@@ -203,7 +203,7 @@ children of CONTEXT can be stack-allocated."
             ;;
             ;; This is useful mainly for debugging purposes.
             (envbox (make-array '())))
-        (interpreted-lambda (name current-path source-location)
+        (interpreted-lambda (name current-path source-location lambda-list doc)
                             #-sbcl (&rest *args*)
                             #+sbcl (sb!int:&more *more* *argnum*)
           (let ((*envbox* envbox)
@@ -336,9 +336,10 @@ children of CONTEXT can be stack-allocated."
                 (eval-lambda (env) (if)
                   (if (funcall a* env) (funcall b* env) (funcall c* env))))))
            ((%lambda)
-            (destructuring-bind ((name current-path source-info) &rest body)
+            (destructuring-bind ((name current-path source-info lambda-list doc)
+                                 &rest body)
                 (rest form)
-              (prepare-lambda body name current-path source-info)))
+              (prepare-lambda body name current-path source-info lambda-list doc)))
            ((catch)
             (destructuring-bind (tag &body body) (rest form)
               (let ((tag* (prepare-form tag))

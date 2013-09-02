@@ -3,42 +3,66 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(defvar *dump-source-p* nil)
+(defvar *dump-info* nil)
+(defvar *set-info* nil)
 (defvar *source-paths&locations* (make-hash-table :weakness :key
                                                   :test #'eq
                                                   :synchronized t))
+
 (defparameter *debug-interpreter* nil)
 
+(defun interpreted-function-p (function)
+  (and (sb!kernel:closurep function)
+       (eq 'interpreted-function (sb!kernel:%fun-name (sb!kernel:%fun-fun function)))))
+
+(defun interpreted-function-name (function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :name))
+    (funcall function)))
+(defun (setf interpreted-function-name) (val function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :set-name)
+        (*set-info* val))
+    (funcall function)))
+(defun interpreted-function-doc (function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :doc))
+    (funcall function)))
+(defun (setf interpreted-function-doc) (val function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :set-doc)
+        (*set-info* val))
+    (funcall function)))
+(defun interpreted-function-lambda-list (function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :lambda-list))
+    (funcall function)))
+(defun (setf interpreted-function-lambda-list) (val function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :set-lambda-list)
+        (*set-info* val))
+    (funcall function)))
 (defun interpreted-function-source-location (function)
-  (cdr (source-path&location function)))
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :source-location))
+    (funcall function)))
+(defun interpreted-function-source-path (function)
+  (assert (interpreted-function-p function))
+  (let ((*dump-info* :source-path))
+    (funcall function)))
+
 (defun source-path (closure)
   (car (source-path&location closure)))
 (defun source-location (closure)
   (cdr (source-path&location closure)))
 (defun source-path&location (closure)
-  (sb-ext:with-locked-hash-table (*source-paths&locations*)
-    (gethash/set-default closure *source-paths&locations*
-      (let ((function-name
-              (and (functionp closure)
-                   (sb!kernel:%fun-name
-                    (sb!impl::%fun-fun closure)))))
-        (if (eq function-name 'interpreted-function)
-            (let ((*dump-source-p* t))
-              (funcall (the function closure)))
-            nil)))))
+  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
+    (gethash closure *source-paths&locations*)))
 (defun (setf source-path&location) (val closure)
-  (sb-ext:with-locked-hash-table (*source-paths&locations*)
+  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
     (setf (gethash closure *source-paths&locations*) val)))
 
-(defun annotate-lambda-with-source (closure &optional
-                                            (current-path
-                                             (when (boundp 'sb!c::*current-path*)
-                                               sb!c::*current-path*))
-                                            (source-location
-                                             (when (and current-path
-                                                        (typep (car (last current-path))
-                                                               '(or fixnum null)))
-                                               (sb!c::make-definition-source-location))))
+(defun annotate-lambda-with-source (closure current-path source-location)
   (when source-location
     ;; XXX It's strange that (car (last sb!c::*current-path*)) can
     ;; ever be a non-fixnum.  This seemingly occurs only in the
@@ -46,6 +70,7 @@
     ;; but not relevant for the form we are processing).
     (setf (source-path&location closure) (cons current-path source-location)))
   closure)
+
 (defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
   `(annotate-lambda-with-source
     (sb!int:named-lambda ,(if kind
@@ -55,13 +80,40 @@
       ,@body)
     ,current-path
     ,source-loc))
-(defmacro interpreted-lambda ((name current-path source-loc) lambda-list &body body)
-  (declare (ignore name))
-  `(sb!int:named-lambda interpreted-function ,lambda-list
-     (declare (optimize sb!c::store-closure-debug-pointer))
-     (if *dump-source-p*
-         (cons ,current-path ,source-loc)
-         (progn ,@body))))
+
+(defmacro interpreted-lambda ((name current-path source-loc lambda-list doc)
+                              real-lambda-list &body body)
+  (let ((name%         (gensym "NAME"))
+        (lambda-list%  (gensym "LAMBDA-LIST"))
+        (doc%          (gensym "DOC"))
+        (current-path% (gensym "CURRENT-PATH"))
+        (source-loc%   (gensym "SOURCE-LOCATION")))
+    `(let ((,name%         ,name)
+           (,lambda-list%  ,lambda-list)
+           (,doc%          ,doc)
+           (,source-loc%   ,source-loc)
+           (,current-path% ,current-path))
+       (sb!int:named-lambda interpreted-function ,real-lambda-list
+         (declare (optimize sb!c::store-closure-debug-pointer))
+         (if *dump-info*
+             (case *dump-info*
+               (:source-path
+                ,current-path%)
+               (:source-location
+                ,source-loc%)
+               (:doc
+                ,doc%)
+               (:set-doc
+                (setq ,doc% *set-info*))
+               (:lambda-list
+                ,lambda-list%)
+               (:set-lambda-list
+                (setq ,lambda-list% *set-info*))
+               (:name
+                ,name%)
+               (:set-name
+                (setq ,name% *set-info*)))
+             (progn ,@body))))))
 
 (defun self-evaluating-p (form)
   (sb!int:self-evaluating-p form))

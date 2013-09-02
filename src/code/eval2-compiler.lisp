@@ -151,8 +151,7 @@
                                           '(or fixnum null)))
                             (sb!c::make-definition-source-location)))
                  (i 0))
-            (declare (ignorable current-path source-location))
-            `(%lambda (,name ,current-path ,source-location)
+            `(%lambda (,name ,current-path ,source-location ,lambda-list nil)
                ,(compile-form
                  `(%let* (,lambda-list ,name t)
                          ,(if (disjointp specials required)

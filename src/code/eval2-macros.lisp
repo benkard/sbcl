@@ -61,14 +61,3 @@
               ,@body))
      (declare (dynamic-extent #',loop-var))
      (,loop-var ,@(mapcar #'second bindings))))
-
-(defmacro gethash/set-default (key hash-table &body default)
-  (let ((hash-table% (gensym))
-        (key% (gensym)))
-    `(let ((,key% ,key)
-           (,hash-table% ,hash-table))
-       (let ((value (gethash ,key% ,hash-table% nil)))
-         (if value
-             value
-             (setf (gethash ,key% ,hash-table%)
-                   (progn ,@default)))))))

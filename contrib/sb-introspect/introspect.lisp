@@ -369,7 +369,7 @@ If an unsupported TYPE is requested, the function will return NIL.
        source))
     (function
      (cond #+sb-eval
-           ((sb-eval2::interpreted-function-source-location object)
+           ((sb-eval2::interpreted-function-p object)
             (translate-source-location
              (sb-eval2::interpreted-function-source-location object)))
            ((struct-accessor-p object)
