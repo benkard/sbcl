@@ -4,7 +4,7 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(deftype eval-closure () `(function () *))
+(deftype eval-closure () `(function (environment) *))
 
 (defstruct (debug-record (:constructor
                              make-debug-record

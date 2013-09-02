@@ -45,12 +45,12 @@
   (annotate-lambda-with-source closure current-path source-location)
   (setf (interpreted-function-p closure) t)
   closure)
-(defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
+(defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
   `(annotate-lambda-with-source
     (sb!int:named-lambda ,(if kind
                               `(eval-closure ,kind)
                               'eval-closure)
-                         ()
+                         ,lambda-list
       ,@body)
     ,current-path
     ,source-loc))
