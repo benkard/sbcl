@@ -2907,7 +2907,17 @@ structure representations"
       :export ("PREPARE-FORM"
                "MAKE-NULL-ENVIRONMENT"
                "MAKE-NULL-CONTEXT"
-               "NATIVE-ENVIRONMENT->CONTEXT"))
+               "NATIVE-ENVIRONMENT->CONTEXT"
+               "CALL-WITH-ENVIRONMENT"
+               "CALL-WITH-CONTEXT"
+               "WITH-CONTEXT"
+               "MINIMALLY-COMPILED-FUNCTION"
+               "MINIMALLY-COMPILED-FUNCTION-P"
+               "MINIMALLY-COMPILED-FUNCTION-NAME"
+               "MINIMALLY-COMPILED-FUNCTION-LAMBDA-LIST"
+               "MINIMALLY-COMPILED-FUNCTION-DOCUMENTATION"
+               "MINIMALLY-COMPILED-FUNCTION-SOURCE-LOCATION"
+               "MINIMALLY-COMPILED-FUNCTION-SOURCE-PATH"))
 
    #!+win32
    #s(sb-cold:package-data

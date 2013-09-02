@@ -369,9 +369,9 @@ If an unsupported TYPE is requested, the function will return NIL.
        source))
     (function
      (cond #+sb-eval
-           ((sb-eval2::interpreted-function-p object)
+           ((sb-eval2::minimally-compiled-function-p object)
             (translate-source-location
-             (sb-eval2::interpreted-function-source-location object)))
+             (sb-eval2::minimally-compiled-function-source-location object)))
            ((struct-accessor-p object)
             (find-definition-source
              (struct-accessor-structure-class object)))
@@ -474,8 +474,8 @@ function designator."
         #+sb-eval
         ((typep function 'sb-eval:interpreted-function)
          (sb-eval:interpreted-function-lambda-list function))
-        ((sb-eval2::interpreted-function-p function)
-         (sb-eval2::interpreted-function-lambda-list function))
+        ((typep function 'sb-eval2::minimally-compiled-function)
+         (sb-eval2::minimally-compiled-function-lambda-list function))
         (t
          (sb-kernel:%simple-fun-arglist (sb-kernel:%fun-fun function)))))
 

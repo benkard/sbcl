@@ -11,46 +11,6 @@
 
 (defparameter *debug-interpreter* nil)
 
-(defun interpreted-function-p (function)
-  (and (sb!kernel:closurep function)
-       (eq 'interpreted-function (sb!kernel:%fun-name (sb!kernel:%fun-fun function)))))
-
-(defun interpreted-function-name (function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :name))
-    (funcall function)))
-(defun (setf interpreted-function-name) (val function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :set-name)
-        (*set-info* val))
-    (funcall function)))
-(defun interpreted-function-doc (function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :doc))
-    (funcall function)))
-(defun (setf interpreted-function-doc) (val function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :set-doc)
-        (*set-info* val))
-    (funcall function)))
-(defun interpreted-function-lambda-list (function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :lambda-list))
-    (funcall function)))
-(defun (setf interpreted-function-lambda-list) (val function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :set-lambda-list)
-        (*set-info* val))
-    (funcall function)))
-(defun interpreted-function-source-location (function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :source-location))
-    (funcall function)))
-(defun interpreted-function-source-path (function)
-  (assert (interpreted-function-p function))
-  (let ((*dump-info* :source-path))
-    (funcall function)))
-
 (defun source-path (closure)
   (car (source-path&location closure)))
 (defun source-location (closure)
@@ -83,37 +43,11 @@
 
 (defmacro interpreted-lambda ((name current-path source-loc lambda-list doc)
                               real-lambda-list &body body)
-  (let ((name%         (gensym "NAME"))
-        (lambda-list%  (gensym "LAMBDA-LIST"))
-        (doc%          (gensym "DOC"))
-        (current-path% (gensym "CURRENT-PATH"))
-        (source-loc%   (gensym "SOURCE-LOCATION")))
-    `(let ((,name%         ,name)
-           (,lambda-list%  ,lambda-list)
-           (,doc%          ,doc)
-           (,source-loc%   ,source-loc)
-           (,current-path% ,current-path))
-       (sb!int:named-lambda interpreted-function ,real-lambda-list
-         (declare (optimize sb!c::store-closure-debug-pointer))
-         (if *dump-info*
-             (case *dump-info*
-               (:source-path
-                ,current-path%)
-               (:source-location
-                ,source-loc%)
-               (:doc
-                ,doc%)
-               (:set-doc
-                (setq ,doc% *set-info*))
-               (:lambda-list
-                ,lambda-list%)
-               (:set-lambda-list
-                (setq ,lambda-list% *set-info*))
-               (:name
-                ,name%)
-               (:set-name
-                (setq ,name% *set-info*)))
-             (progn ,@body))))))
+  `(make-minimally-compiled-function
+    ,name ,lambda-list ,doc ,source-loc ,current-path
+    (sb!int:named-lambda minimally-compiled-function ,real-lambda-list
+      (declare (optimize sb!c::store-closure-debug-pointer))
+      ,@body)))
 
 (defun self-evaluating-p (form)
   (sb!int:self-evaluating-p form))

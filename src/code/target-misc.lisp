@@ -79,21 +79,23 @@
     #!+sb-eval
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-debug-lambda-list function))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (sb!eval2::minimally-compiled-function-lambda-list function))
     (t
-     (if (sb!eval2::interpreted-function-p function)
-         (sb!eval2::interpreted-function-lambda-list function)
-         (%simple-fun-arglist (%fun-fun function))))))
+     (%simple-fun-arglist (%fun-fun function)))))
 
 (defun (setf %fun-lambda-list) (new-value function)
   (typecase function
     #!+sb-eval
     (sb!eval:interpreted-function
      (setf (sb!eval:interpreted-function-debug-lambda-list function) new-value))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (setf (sb!eval2::minimally-compiled-function-lambda-list function) new-value))
     ;; FIXME: Eliding general funcallable-instances for now.
     ((or simple-fun closure)
-     (if (sb!eval2::interpreted-function-p function)
-         (setf (sb!eval2::interpreted-function-lambda-list function) new-value)
-         (setf (%simple-fun-arglist (%fun-fun function)) new-value))))
+     (setf (%simple-fun-arglist (%fun-fun function)) new-value)))
   new-value)
 
 (defun %fun-type (function)
@@ -107,21 +109,23 @@
     #!+sb-eval
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-debug-name function))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (sb!eval2::minimally-compiled-function-name function))
     (t
-     (if (sb!eval2::interpreted-function-p function)
-         (sb!eval2::interpreted-function-name function)
-         (%simple-fun-name (%fun-fun function))))))
+     (%simple-fun-name (%fun-fun function)))))
 
 (defun (setf %fun-name) (new-value function)
   (typecase function
     #!+sb-eval
     (sb!eval:interpreted-function
      (setf (sb!eval:interpreted-function-debug-name function) new-value))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (setf (sb!eval2::minimally-compiled-function-name function) new-value))
     ;; FIXME: Eliding general funcallable-instances for now.
     ((or simple-fun closure)
-     (if (sb!eval2::interpreted-function-p function)
-         (setf (sb!eval2::interpreted-function-name function) new-value)
-         (setf (%simple-fun-name (%fun-fun function)) new-value))))
+     (setf (%simple-fun-name (%fun-fun function)) new-value)))
   new-value)
 
 (defun %fun-doc (function)
@@ -129,10 +133,11 @@
     #!+sb-eval
     (sb!eval:interpreted-function
      (sb!eval:interpreted-function-documentation function))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (sb!eval2::minimally-compiled-function-documentation function))
     (t
-     (if (sb!eval2::interpreted-function-p function)
-         (sb!eval2::interpreted-function-doc function)
-         (%simple-fun-doc (%fun-fun function))))))
+     (%simple-fun-doc (%fun-fun function)))))
 
 (defun (setf %fun-doc) (new-value function)
   (declare (type (or null string) new-value))
@@ -140,10 +145,11 @@
     #!+sb-eval
     (sb!eval:interpreted-function
      (setf (sb!eval:interpreted-function-documentation function) new-value))
+    #!+sb-eval
+    (sb!eval2::minimally-compiled-function
+     (setf (sb!eval2::minimally-compiled-function-documentation function) new-value))
     ((or simple-fun closure)
-     (if (sb!eval2::interpreted-function-p function)
-         (setf (sb!eval2::interpreted-function-name function) new-value)
-         (setf (%simple-fun-doc (%fun-fun function)) new-value))))
+     (setf (%simple-fun-doc (%fun-fun function)) new-value)))
   new-value)
 
 ;;; various environment inquiries

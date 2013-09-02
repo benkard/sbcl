@@ -425,6 +425,8 @@
  ;; definition of the COMPILED-FUNCTION type.
  #!+sb-eval
  ("src/code/early-full-eval")
+ #!+sb-eval
+ ("src/code/early-eval2")
 
  ("src/code/typep" :not-host)
 

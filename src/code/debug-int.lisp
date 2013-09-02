@@ -804,7 +804,7 @@
     (return-from possibly-an-interpreted-frame
       (frame-down frame)))
   (unless (eq (debug-fun-name (frame-debug-fun frame))
-              'sb!eval2::interpreted-function)
+              'sb!eval2::minimally-compiled-function)
     (return-from possibly-an-interpreted-frame
       frame))
   (let ((eval-closure-frame (frame-find-upframe-if
