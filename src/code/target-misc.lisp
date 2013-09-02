@@ -43,8 +43,8 @@
                   ,@body)
                t name)))
     (function
-     (let* ((fun (%simple-fun-self (%fun-fun fun)))
-            (name (%fun-name fun))
+     (let* ((name (%fun-name fun))
+            (fun (%simple-fun-self (%fun-fun fun)))
             (code (sb!di::fun-code-header fun))
             (info (sb!kernel:%code-debug-info code)))
        (if info

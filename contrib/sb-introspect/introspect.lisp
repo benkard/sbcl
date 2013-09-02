@@ -474,6 +474,8 @@ function designator."
         #+sb-eval
         ((typep function 'sb-eval:interpreted-function)
          (sb-eval:interpreted-function-lambda-list function))
+        ((sb-eval2::interpreted-function-p function)
+         (sb-eval2::interpreted-function-lambda-list function))
         (t
          (sb-kernel:%simple-fun-arglist (sb-kernel:%fun-fun function)))))
 
