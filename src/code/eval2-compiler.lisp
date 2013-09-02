@@ -113,7 +113,7 @@
 (defun disjointp (list1 list2)
   (null (intersection list1 list2)))
 
-(defun compile-lambda (lambda-form &key (name nil))
+(defun compile-lambda (lambda-form &key (name nil) (blockp nil))
   ;;#+sbcl (declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
@@ -153,54 +153,55 @@
                  (i 0))
             `(%lambda (,name ,current-path ,source-location ,lambda-list nil)
                ,(compile-form
-                 `(%let* (,lambda-list ,name t)
-                         ,(if (disjointp specials required)
-                              `(,required
-                                (%fetchargs ,required-num))
-                              nil)
-                         (,@(loop for arg in required
-                                  collect `(,arg (%getarg ,i))
-                                  do (incf i))
-                          ,@(loop for arg in optional
-                                  for var = (lambda-binding-main-var arg)
-                                  for default = (lambda-binding-default arg)
-                                  for suppliedp = (lambda-binding-suppliedp-var arg)
-                                  collect `(,var (if (< ,i %argnum)
-                                                     (%getarg ,i)
-                                                     ,default))
-                                  when suppliedp
-                                  collect `(,suppliedp (< ,i %argnum))
-                                  do (incf i))
-                          ,@(when (or restp keyp)
-                              `((,rest (%arglistfrom ,i))))
-                          ,@(loop for arg in keys
-                                  for var = (lambda-binding-main-var arg)
-                                  for key = (lambda-key arg)
-                                  for default = (lambda-binding-default arg)
-                                  for suppliedp = (lambda-binding-suppliedp-var arg)
-                                  collect `(,var (getf ,rest ',key ,default))
-                                  when suppliedp
-                                  collect `(,suppliedp
-                                            (and (get-properties ,rest '(,key)) t))
-                                  do (incf i))
-                          ,@(loop for arg in aux
-                                  for var = (lambda-binding-main-var arg)
-                                  for default = (lambda-binding-default arg)
-                                  collect `(,var ,default)))
-                    (declare (special ,@specials))
-                    (%checkargs ,required-num
-                                ,(unless (or keyp restp) (+ required-num optional-num)))
-                    ,@(when (and keyp (not allowp))
-                        `((unless (getf ,rest :allow-other-keys nil)
-                            (let ((to-check ,rest))
-                              (unless (endp to-check)
-                                (let ((k (pop to-check)))
-                                  (unless (member k ',(cons :allow-other-keys (mapcar #'lambda-key keys)))
-                                    (error 'simple-program-error
-                                           :format-control "unknown &KEY argument: ~A"
-                                           :format-arguments (list k))))
-                                (pop to-check))))))
-                    ,@body)))))))))
+                 `(,@(if blockp `(%block ,(fun-name-block-name name)) `(progn))
+                    (%let* (,lambda-list ,name t)
+                           ,(if (disjointp specials required)
+                                `(,required
+                                  (%fetchargs ,required-num))
+                                nil)
+                           (,@(loop for arg in required
+                                    collect `(,arg (%getarg ,i))
+                                    do (incf i))
+                            ,@(loop for arg in optional
+                                    for var = (lambda-binding-main-var arg)
+                                    for default = (lambda-binding-default arg)
+                                    for suppliedp = (lambda-binding-suppliedp-var arg)
+                                    collect `(,var (if (< ,i %argnum)
+                                                       (%getarg ,i)
+                                                       ,default))
+                                    when suppliedp
+                                    collect `(,suppliedp (< ,i %argnum))
+                                    do (incf i))
+                            ,@(when (or restp keyp)
+                                `((,rest (%arglistfrom ,i))))
+                            ,@(loop for arg in keys
+                                    for var = (lambda-binding-main-var arg)
+                                    for key = (lambda-key arg)
+                                    for default = (lambda-binding-default arg)
+                                    for suppliedp = (lambda-binding-suppliedp-var arg)
+                                    collect `(,var (getf ,rest ',key ,default))
+                                    when suppliedp
+                                    collect `(,suppliedp
+                                              (and (get-properties ,rest '(,key)) t))
+                                    do (incf i))
+                            ,@(loop for arg in aux
+                                    for var = (lambda-binding-main-var arg)
+                                    for default = (lambda-binding-default arg)
+                                    collect `(,var ,default)))
+                           (declare (special ,@specials))
+                           (%checkargs ,required-num
+                                       ,(unless (or keyp restp) (+ required-num optional-num)))
+                           ,@(when (and keyp (not allowp))
+                               `((unless (getf ,rest :allow-other-keys nil)
+                                   (let ((to-check ,rest))
+                                     (unless (endp to-check)
+                                       (let ((k (pop to-check)))
+                                         (unless (member k ',(cons :allow-other-keys (mapcar #'lambda-key keys)))
+                                           (error 'simple-program-error
+                                                  :format-control "unknown &KEY argument: ~A"
+                                                  :format-arguments (list k))))
+                                       (pop to-check))))))
+                           ,@body))))))))))
 
 (defun compile-ref (var)
   (if (context-var-lexical-p *context* var)
@@ -401,9 +402,10 @@
                                 `(%envset 0 ,i
                                           ,(with-context binding-context
                                              (compile-lambda (cons lambda-list body)
-                                                             :name name))))
-                     ,@(with-context body-context
-                         (mapcar #'compile-form body)))))))
+                                                             :name name
+                                                             :blockp t))))
+                     ,(with-context body-context
+                         (compile-progn body)))))))
             ((let)
              (compile-form `(%let (:none nil) () ,@(rest form))))
             ((let*)
