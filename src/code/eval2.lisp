@@ -250,6 +250,7 @@ children of CONTEXT can be stack-allocated."
                 #-sbcl (elt *args* i))))
            ((%fetchargs)
             (destructuring-bind (n) (rest form)
+              (declare (fixnum n))
               (eval-lambda (env) (%fetchargs)
                 (dotimes (i n)
                   (setf (environment-value env 0 i)
@@ -313,17 +314,19 @@ children of CONTEXT can be stack-allocated."
               (prepare-global-call f args)))
            ((%tagbody)
             (destructuring-bind ((go-tag) &rest blocks) (rest form)
-              (let ((blocks*
-                      (map 'simple-vector #'prepare-progn blocks))
-                    (block-count
-                      (length blocks)))
+              (let* ((blocks*
+                       (map 'simple-vector #'prepare-progn blocks))
+                     (block-count
+                       (length blocks*)))
                 (eval-lambda (env) (%tagbody)
                   (let ((continuation-index 0))
+                    (declare (fixnum continuation-index))
                     (loop
                       until (= continuation-index block-count)
                       do (setq continuation-index
                                (catch go-tag
-                                 (funcall (svref blocks* continuation-index) env)
+                                 (funcall (the eval-closure
+                                               (svref blocks* continuation-index)) env)
                                  (1+ continuation-index)))))))))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
