@@ -451,10 +451,10 @@
                                        (if dynamic-block-p
                                            `((progv (%varget ,dynvars-sym)
                                                  (%varget ,dynvals-sym)
-                                               ,@(with-context real-body-context
-                                                   (mapcar #'compile-form body))))
-                                           `(,@(with-context real-body-context
-                                                 (mapcar #'compile-form body)))))
+                                               ,(with-context real-body-context
+                                                  (compile-progn body))))
+                                           `(,(with-context real-body-context
+                                                (compile-progn body)))))
                                      (destructuring-bind (var . value-form)
                                          (first remaining-bindings)
                                        (let ((val* (with-context binding-context
