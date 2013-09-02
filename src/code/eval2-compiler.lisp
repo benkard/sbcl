@@ -432,18 +432,22 @@
                               (context-add-env-lexicals *context* (list))
                               binding-context))
                         (debug-info
-                          (make-debug-record body-context lambda-list function-name)))
+                          (make-debug-record body-context lambda-list function-name))
+                        (dynamic-block-p
+                          (and (eq (first form) '%let)
+                               (or specials
+                                   (some #'globally-special-p vars)))))
                    (with-context binding-context
                      `(%with-environment :indefinite-extent ,set-box-p (,debug-info ,varnum)
                         ,(let ((dynvals-sym (gensym "DYNVALS"))
                                (dynvars-sym (gensym "DYNVARS")))
-                           `(,@(if (eq (first form) '%let)
+                           `(,@(if dynamic-block-p
                                    `(progv '(,dynvars-sym ,dynvals-sym) '(nil nil))
                                    `(progn))
                              ,@init-block
                              ,@(nlet iter ((remaining-bindings real-bindings))
                                  (if (endp remaining-bindings)
-                                     (if (eq (first form) '%let)
+                                     (if dynamic-block-p
                                          `((progv (%varget ,dynvars-sym)
                                                   (%varget ,dynvals-sym)
                                              ,@(with-context body-context
