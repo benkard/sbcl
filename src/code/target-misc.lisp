@@ -42,6 +42,12 @@
                   ,@(when declarations `((declare ,@declarations)))
                   ,@body)
                t name)))
+    #!+sb-eval
+    (sb!eval2:minimally-compiled-function
+     (let ((name (sb!eval2:minimally-compiled-function-name fun))
+           (lambda-list (sb!eval2:minimally-compiled-function-lambda-list fun)))
+       (declare (ignore lambda-list))
+       (values nil t name)))
     (function
      (let* ((name (%fun-name fun))
             (fun (%simple-fun-self (%fun-fun fun)))

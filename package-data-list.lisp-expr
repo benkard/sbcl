@@ -2905,6 +2905,7 @@ structure representations"
       :use ("CL")
       :import-from (("SB!C" "SIMPLE-PROGRAM-ERROR"))
       :export ("PREPARE-FORM"
+               "COMPILE-FORM"
                "MAKE-NULL-ENVIRONMENT"
                "MAKE-NULL-CONTEXT"
                "NATIVE-ENVIRONMENT->CONTEXT"

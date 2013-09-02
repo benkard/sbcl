@@ -1445,6 +1445,9 @@
         #!+sb-eval
         ((sb!eval:interpreted-function-p thing)
          (compile nil thing))
+        #!+sb-eval
+        ((sb!eval2:minimally-compiled-function-p thing)
+         (compile nil thing))
         ((typep thing 'sb!pcl::%method-function)
          ;; in a %METHOD-FUNCTION, the user code is in the fast function, so
          ;; we to disassemble both.

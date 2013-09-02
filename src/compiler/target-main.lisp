@@ -137,6 +137,9 @@
          (multiple-value-bind (definition lexenv)
              (sb!eval:prepare-for-compile definition)
            (actually-compile name definition lexenv source-info tlf errorp)))
+        #!+sb-eval
+        ((sb!eval2:minimally-compiled-function-p definition)
+         (error "Compilation of minimally compiled functions is not possible."))
         ((compiled-function-p definition)
          (values definition nil nil))
         (t
