@@ -3,26 +3,19 @@
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
                    (sb!c::store-closure-debug-pointer 3)))
 
-(defvar *source-paths* (make-hash-table :weakness :key :test #'eq))
-(defvar *source-locations* (make-hash-table :weakness :key :test #'eq))
-(defvar *closure-tags* (make-hash-table :weakness :key :test #'eq))
-(defvar *interpreted-functions* (make-hash-table :weakness :key :test #'eq))
+(defvar *source-paths&locations* (make-hash-table :weakness :key :test #'eq))
 (defparameter *debug-interpreter* nil)
-(defun interpreted-function-source-location (function)
-  (gethash function *source-locations* nil))
-(defun interpreted-function-p (function)
-  (gethash function *interpreted-functions* nil))
-(defun (setf interpreted-function-p) (val function)
-  (setf (gethash function *interpreted-functions*) (and val t)))
-(defun source-path (eval-closure)
-  (gethash eval-closure *source-paths*))
-(defun source-location (eval-closure)
-  (gethash eval-closure *source-locations*))
-(defun (setf source-path) (val eval-closure)
-  (setf (gethash eval-closure *source-paths*) val))
-(defun (setf source-location) (val eval-closure)
-  (setf (gethash eval-closure *source-locations*) val))
 
+(defun interpreted-function-source-location (function)
+  (cdr (source-path&location function)))
+(defun source-path (closure)
+  (car (source-path&location closure)))
+(defun source-location (closure)
+  (cdr (source-path&location closure)))
+(defun source-path&location (closure)
+  (gethash closure *source-paths&locations*))
+(defun (setf source-path&location) (val closure)
+  (setf (gethash closure *source-paths&locations*) val))
 
 (defun annotate-lambda-with-source (closure &optional
                                             (current-path
@@ -38,12 +31,11 @@
     ;; ever be a non-fixnum.  This seemingly occurs only in the
     ;; context of #. evaluation (where *source-path* etc. are bound
     ;; but not relevant for the form we are processing).
-    (setf (source-path closure) current-path)
-    (setf (source-location closure) source-location))
+    (setf (source-path&location closure) (cons current-path source-location)))
   closure)
 (defun annotate-interpreted-lambda-with-source (closure current-path source-location)
+  (declare (ignorable current-path source-location))
   (annotate-lambda-with-source closure current-path source-location)
-  (setf (interpreted-function-p closure) t)
   closure)
 (defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
   `(annotate-lambda-with-source

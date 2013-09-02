@@ -823,7 +823,7 @@
                             (number (warn 'simple-warning
                                           :format-control "Frame ~S has an invalid closure pointer (~S)"
                                           :format-arguments (list eval-closure-frame closure?))))))
-               (source-path (gethash closure (symbol-value 'sb!eval2::*source-paths*)))
+               (source-path (sb!eval2::source-path closure))
                (env (interpreter-frame-environment frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))
                (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
@@ -876,7 +876,7 @@
 ;;;
 ;;;
 (defun eval-closure-debug-source (closure)
-  (let ((source-loc (gethash closure (symbol-value 'sb!eval2::*source-locations*))))
+  (let ((source-loc (sb!eval2::source-location closure)))
     (if source-loc
         (sb!c::make-debug-source
          :namestring (sb!c::definition-source-location-namestring source-loc)
