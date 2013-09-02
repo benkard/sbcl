@@ -1,8 +1,8 @@
 (in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
 
 #+sbcl
-(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                   (sb!c::store-closure-debug-pointer 3)))
+(declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)
+                   (sb!c::store-closure-debug-pointer 0)))
 
 (deftype eval-closure () `(function (environment) *))
 
@@ -16,9 +16,20 @@
   (lambda-list nil :type (or list (member :none)))
   (function-name nil))
 
-(declaim (inline %make-environment))
-(defstruct (environment (:constructor %make-environment))
-  (debug-record nil :type debug-record)
+#+(or)
+(deftype environment ()
+  `(simple-vector 3))
+
+(declaim (inline %make-environment
+                 environment-debug-record
+                 environment-parent
+                 environment-data))
+(defstruct (environment (:constructor
+                            %make-environment
+                            (debug-record parent data))
+                        ;;(:type vector)
+                        )
+  (debug-record nil :type (or null debug-record))
   (parent nil :type (or null environment))
   (data nil :type simple-vector))
 
@@ -34,7 +45,7 @@
                                (if (zerop (the fixnum size))
                                    #()
                                    (make-array (list size)))))
-  (%make-environment :debug-record debug-record :parent parent :data data))
+  (%make-environment debug-record parent data))
 
 (defstruct lexical
   (name    nil :type (or symbol list))

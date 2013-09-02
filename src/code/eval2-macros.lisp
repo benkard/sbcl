@@ -9,7 +9,7 @@
         (size% (gensym)))
     `(let* ((,size% ,size)
             (,data% (make-array (list ,size%)))
-            (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
+            (,var (%make-environment ,debug-record ,parent ,data%)))
        (declare (type (mod #.(1+ +stack-max+)) ,size%)
                 ;; we must not allocate environment objects on the
                 ;; stack unless we can be sure that all child
@@ -24,7 +24,8 @@
         (size% (gensym)))
     `(let* ((,size% ,size)
             (,data% (make-array (list ,size%)))
-            (,var (%make-environment :debug-record ,debug-record :parent ,parent :data ,data%)))
+            (,var (%make-environment ,debug-record ,parent ,data%)))
+       (declare (fixnum ,size%))
        ,@body)))
 
 (defmacro with-parsed-body ((forms-var specials-var) exprs &body body)
