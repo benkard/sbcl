@@ -304,8 +304,6 @@
            ((%lambda)
             (destructuring-bind (info &rest body) (rest form)
               `(%lambda ,info ,@(mapcar #'compile-form body))))
-           ((%loop)
-            `(%loop ,@(mapcar #'compile-form (rest form))))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (compile-form a))
@@ -554,7 +552,11 @@
             ((go)
              (compile-form `(%go ,@(rest form)) mode))
             ((tagbody)
-             (compile-form `(%tagbody ,@(rest form)) mode))
+             (compile-form `(%parsed-tagbody ,@(rest form)) mode))
+            ((%tagbody)
+             (destructuring-bind ((go-tag) &rest blocks) (rest form)
+               `(%tagbody (,go-tag)
+                  ,@(mapcar (lambda (forms) (mapcar #'compile-form forms)) blocks))))
             (otherwise
              ;; FIXME: Handle SETF expanders?
              (destructuring-bind (f . args) form

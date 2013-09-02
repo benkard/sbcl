@@ -305,6 +305,20 @@ children of CONTEXT can be stack-allocated."
            ((%global-call)
             (destructuring-bind (f &rest args) (rest form)
               (prepare-global-call f args)))
+           ((%tagbody)
+            (destructuring-bind ((go-tag) &rest blocks) (rest form)
+              (let ((blocks*
+                      (map 'simple-vector #'prepare-progn blocks))
+                    (block-count
+                      (length blocks)))
+                (eval-lambda (%tagbody)
+                  (let ((continuation-index 0))
+                    (loop
+                      until (= continuation-index block-count)
+                      do (setq continuation-index
+                               (catch go-tag
+                                 (funcall (svref blocks* continuation-index))
+                                 (1+ continuation-index)))))))))
            ((if)
             (destructuring-bind (a b &optional c) (rest form)
               (let ((a* (prepare-form a))
@@ -350,10 +364,6 @@ children of CONTEXT can be stack-allocated."
                     (funcall body*))))))
            ((progn)
             (prepare-progn (rest form)))
-           ((%loop)
-            (let ((body* (prepare-progn (rest form))))
-              (eval-lambda (%loop)
-                (loop (funcall body*)))))
            ((%with-binding)
             (destructuring-bind (var val &body body) (rest form)
               (let ((val* (prepare-form val))
