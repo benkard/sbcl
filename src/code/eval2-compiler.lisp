@@ -446,13 +446,15 @@
                              ,@init-block
                              ,@(nlet iter ((remaining-bindings real-bindings))
                                  (if (endp remaining-bindings)
-                                     (if dynamic-block-p
-                                         `((progv (%varget ,dynvars-sym)
-                                                  (%varget ,dynvals-sym)
-                                             ,@(with-context body-context
-                                                 (mapcar #'compile-form body))))
-                                         `(,@(with-context body-context
-                                               (mapcar #'compile-form body))))
+                                     (let ((real-body-context
+                                             (context-add-specials body-context specials)))
+                                       (if dynamic-block-p
+                                           `((progv (%varget ,dynvars-sym)
+                                                 (%varget ,dynvals-sym)
+                                               ,@(with-context real-body-context
+                                                   (mapcar #'compile-form body))))
+                                           `(,@(with-context real-body-context
+                                                 (mapcar #'compile-form body)))))
                                      (destructuring-bind (var . value-form)
                                          (first remaining-bindings)
                                        (let ((val* (with-context binding-context
