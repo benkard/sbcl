@@ -810,7 +810,7 @@
   (let ((eval-closure-frame (frame-find-upframe-if
                              (lambda (x)
                                (let ((fname (debug-fun-name (frame-debug-fun x))))
-                                 (or (eq fname 'sb!eval2::eval-closure) 
+                                 (or (eq fname 'sb!eval2::eval-closure)
                                      (and (listp fname)
                                           (eq 'sb!eval2::eval-closure (first fname))))))
                              up-frame)))
