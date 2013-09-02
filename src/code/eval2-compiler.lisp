@@ -528,11 +528,11 @@
                (with-parsed-body (body specials) exprs
                  (let ((bindings (mapcar (lambda (macro-form)
                                            (cons (first macro-form)
-                                                 (with-environment (make-null-environment)
-                                                   (funcall
-                                                    (prepare-form
-                                                     (compile-macro-lambda (first macro-form)
-                                                                           (rest macro-form)))))))
+                                                 (call-with-environment
+                                                  (make-null-environment)
+                                                  (prepare-form
+                                                   (compile-macro-lambda (first macro-form)
+                                                                         (rest macro-form))))))
                                          bindings)))
                    (with-context (context-add-specials
                                   (context-add-macros *context* bindings)
