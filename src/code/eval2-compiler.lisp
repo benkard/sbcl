@@ -364,8 +364,8 @@
                ,@(loop for (var valform) on (rest form) by #'cddr
                        collect
                           (cond ((context-var-symbol-macro-p *context* var)
-                                 (let ((form (context-find-symbol-macro *context* var)))
-                                   (compile-form `(setf ,form ,valform))))
+                                 (let ((form (car (context-find-symbol-macro *context* var))))
+                                   (compile-form (print `(setf ,form ,valform)))))
                                 ((context-var-lexical-p *context* var)
                                  (let* ((lexical (context-find-lexical *context* var))
                                         (nesting (lexical-nesting lexical))
