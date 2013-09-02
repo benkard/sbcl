@@ -6,9 +6,6 @@
 
 (defvar *mode* :execute)
 
-(declaim (type environment *env*))
-(defvar *env* (make-null-environment))
-
 (declaim (inline call-with-environment))
 (declaim (ftype (function (environment function) *) call-with-environment))
 (defun call-with-environment (env thunk)
@@ -234,6 +231,7 @@ children of CONTEXT can be stack-allocated."
                 (ecase extent
                   ((:indefinite-extent)
                    (eval-lambda (env) (%with-environment)
+                     ;;(declare (notinline %make-environment))
                      (with-indefinite-extent-environment (env debug-info env varnum)
                        (when set-box-p
                          (setf (aref (the (simple-array t ()) *envbox*)) env))
