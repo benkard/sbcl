@@ -104,52 +104,42 @@ children of CONTEXT can be stack-allocated."
 
 (declaim (ftype (function (fixnum fixnum list) eval-closure) prepare-local-call))
 (defun prepare-local-call (nesting offset args)
-  (let* ((args* (mapcar (lambda (form) (prepare-form form)) args)))
+  (let* ((args* (map 'simple-vector #'prepare-form args)))
     (if (< (length args) 20)
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
-          (let ((argvars (loop for i from 0 below m%
-                               collect (gensym (format nil "ARG~D-" i)))))
-            `(let* ((my-args* args*)
-                    ,@(loop for var in argvars
-                            for i from 0 below m%
-                            collect `(,var (pop my-args*))))
-               (declare (ignorable my-args*))
-               (eval-lambda (env) (%local-call)
-                 (declare (ignorable env))
-                 (funcall (the function (environment-value env nesting offset))
-                          ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) env)))))))
+          `(eval-lambda (env) (%local-call)
+             (declare (ignorable env))
+             (funcall (the function (environment-value env nesting offset))
+                      ,@(loop for i from 0 below m%
+                              collect `(funcall (the eval-closure (svref args* ,i))
+                                                env)))))
         (eval-lambda (env) (%local-call)
           (apply (the function (environment-value env nesting offset))
-                 (mapcar (lambda (x) (funcall (the eval-closure x) env)) args*))))))
+                 (map 'list (lambda (x) (funcall (the eval-closure x) env)) args*))))))
 
 (declaim (ftype (function ((or symbol list) list) eval-closure) prepare-global-call))
 (defun prepare-global-call (f args)
-  (let ((args* (mapcar (lambda (form) (prepare-form form)) args))
+  (let ((args* (map 'simple-vector #'prepare-form args))
         #+sbcl
         (f* (sb!c::fdefinition-object f t)))
     (if (< (length args) 20)
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
-          (let ((argvars (loop for i from 0 below m%
-                               collect (gensym (format nil "ARG~D-" i)))))
-            `(let* ((my-args* args*)
-                    ,@(loop for var in argvars
-                            for i from 0 below m%
-                            collect `(,var (pop my-args*))))
-               (declare (ignorable my-args*))
-               (eval-lambda (env) (%global-call)
-                 (declare (ignorable env))
-                 (funcall #+sbcl (or (sb!c::fdefn-fun f*)
-                                     (error 'undefined-function :name f))
-                          #-sbcl f
-                          ,@(loop for var in argvars
-                                  collect `(funcall (the eval-closure ,var) env)))))))
+          `(eval-lambda (env) (%global-call)
+             (declare (ignorable env))
+             (funcall #+sbcl (or (sb!c::fdefn-fun f*)
+                                 (error 'undefined-function :name f))
+                      #-sbcl f
+                      ,@(loop for i from 0 below m%
+                              collect
+                                 `(funcall (the eval-closure (svref args* ,i))
+                                           env)))))
         (eval-lambda (env) (%global-call)
           (apply #+sbcl (or (sb!c::fdefn-fun f*)
                             (error 'undefined-function :name f))
                  #-sbcl f
-                 (mapcar (lambda (x) (funcall (the eval-closure x) env))
-                         args*))))))
+                 (map 'list
+                      (lambda (x) (funcall (the eval-closure x) env))
+                      args*))))))
 
 (declaim (ftype (function (eval-closure list) eval-closure) prepare-direct-call))
 (defun prepare-direct-call (f args)
