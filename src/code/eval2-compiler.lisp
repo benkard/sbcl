@@ -197,13 +197,16 @@
                          ,@(when (and keyp (not allowp))
                              `((unless (getf ,rest :allow-other-keys nil)
                                  (let ((to-check ,rest))
-                                   (unless (endp to-check)
-                                     (let ((k (pop to-check)))
-                                       (unless (member k ',(cons :allow-other-keys (mapcar #'lambda-key keys)))
-                                         (error 'simple-program-error
-                                                :format-control "unknown &KEY argument: ~A"
-                                                :format-arguments (list k))))
-                                     (pop to-check))))))
+                                   (tagbody
+                                    check
+                                      (unless (endp to-check)
+                                        (let ((k (pop to-check)))
+                                          (unless (member k ',(cons :allow-other-keys (mapcar #'lambda-key keys)))
+                                            (error 'simple-program-error
+                                                   :format-control "unknown &KEY argument: ~A"
+                                                   :format-arguments (list k))))
+                                        (pop to-check)
+                                        (go check)))))))
                          (,@(if blockp `(%block ,(fun-name-block-name name)) `(progn))
                           ,@body))))))))))
 
