@@ -38,7 +38,7 @@
 (defvar *context*)
 
 (defun compile-nil ()
-  nil)
+  ''nil)
 
 (defun compile-progn (forms &optional (*mode* *mode*))
   `(progn ,@(mapcar #'compile-form forms)))
@@ -252,7 +252,7 @@
      ((self-evaluating-p form)
       ;;FIXME load forms?
       ;;(format t "~&~S" form)
-      form)
+      `',form)
      (t
       (etypecase form
         (symbol
