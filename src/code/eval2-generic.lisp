@@ -54,7 +54,7 @@
       (psetq whole?      (second lambda-list)
              lambda-list (cddr lambda-list)))
     `(block ,(fun-name-block-name name)
-       (destructuring-bind ,lambda-list ,whole
+       (destructuring-bind ,lambda-list (rest ,whole)
          (let (,@(if env?
                      `((,env? ,env))
                      `())

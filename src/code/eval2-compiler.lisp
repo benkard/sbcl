@@ -530,15 +530,32 @@
                  (let ((bindings (mapcar (lambda (macro-form)
                                            (cons (first macro-form)
                                                  (call-with-environment
-                                                  (make-null-environment)
+                                                  (context-evaluation-environment *context*)
                                                   (prepare-form
-                                                   (compile-macro-lambda (first macro-form)
-                                                                         (rest macro-form))))))
+                                                   (with-context
+                                                       (context-evaluation-context
+                                                        *context*)
+                                                     (compile-macro-lambda
+                                                      (first macro-form)
+                                                      (rest macro-form)))))))
                                          bindings)))
                    (with-context (context-add-specials
                                   (context-add-macros *context* bindings)
                                   specials)
                      (compile-progn body mode))))))
+            ((#+ccl ccl:compiler-let #+sbcl sb-cltl2:compiler-let)
+             (destructuring-bind (bindings &rest body) (rest form)
+               (with-context (context-add-evaluation-bindings
+                              *context*
+                              (loop for x in bindings
+                                    for var = (if (consp x) (car x) x)
+                                    for form = (if (consp x) (cadr x) nil)
+                                    collect
+                                       `(,var
+                                         . ,(call-with-environment
+                                             (context-evaluation-environment *context*)
+                                             (prepare-form (compile-form form))))))
+                 (compile-progn body))))
             ((catch unwind-protect multiple-value-prog1 multiple-value-call progv
               throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))

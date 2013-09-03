@@ -253,7 +253,8 @@ children of CONTEXT can be stack-allocated."
               (eval-lambda (env) (%checkkeyargs)
                 (let ((argnum *argnum*))
                   (declare (fixnum argnum))
-                  (when (oddp (- argnum positional-num))
+                  (when (and (> argnum positional-num)
+                             (oddp (- argnum positional-num)))
                     (let ((rest (funcall
                                  (prepare-form `(%arglistfrom ,positional-num))
                                  env)))
