@@ -543,7 +543,7 @@
                                   (context-add-macros *context* bindings)
                                   specials)
                      (compile-progn body mode))))))
-            ((compiler-let #+ccl ccl:compiler-let #+sbcl sb-cltl2:compiler-let)
+            ((compiler-let #+ccl ccl:compiler-let #+(or) sb-cltl2:compiler-let)
              (destructuring-bind (bindings &rest body) (rest form)
                (with-context (context-add-evaluation-bindings
                               *context*
@@ -554,7 +554,9 @@
                                        `(,var
                                          . ,(call-with-environment
                                              (context-evaluation-environment *context*)
-                                             (prepare-form (compile-form form))))))
+                                             (prepare-form
+                                              (with-context (context-evaluation-context *context*)
+                                                (compile-form form)))))))
                  (compile-progn body))))
             ((catch unwind-protect multiple-value-prog1 multiple-value-call progv
               throw)
