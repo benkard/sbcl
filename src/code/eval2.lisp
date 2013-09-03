@@ -1,4 +1,4 @@
-(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 #+sbcl
 (declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
@@ -413,15 +413,6 @@ children of CONTEXT can be stack-allocated."
                 (eval-lambda (env) (unwind-protect)
                   (unwind-protect (funcall protected* env)
                     (funcall body* env))))))
-           #+sbcl
-           ((sb!ext:truly-the)
-            (prepare-form (third form)))
-           #+sbcl
-           ((sb!int:named-lambda)
-            (prepare-lambda (cddr form) :name (cadr form)))
-           #+ccl
-           ((ccl:nfunction)
-            (prepare-lambda (cdaddr form) :name (cadr form)))
            ((setq block flet labels let let* locally multiple-value-bind
              return-from symbol-macrolet macrolet go tagbody eval-when
              multiple-value-setq)

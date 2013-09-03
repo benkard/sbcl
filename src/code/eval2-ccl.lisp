@@ -1,22 +1,28 @@
-(in-package "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 (setf (find-class 'simple-program-error)
       (find-class 'ccl::simple-program-error))
 
 
-(defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
+(defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
+  (declare (ignore current-path source-loc))
   `(ccl:nfunction ,(if kind
                        `(eval-closure ,kind)
                        'eval-closure)
                   (lambda ,lambda-list ,@body)))
 
-(defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
+(defmacro interpreted-lambda ((name current-path source-info lambda-list doc)
+                              real-lambda-list
+                              &body body)
   (declare (ignore current-path source-info))
-  `(let ((fn (lambda ,lambda-list ,@body)))
+  `(let ((fn (lambda ,real-lambda-list ,@body)))
      (if name
-         (ccl::lfun-name fn ',name)
-         (ccl::lfun-name fn 'interpreted-function))
-     fn))
+         (ccl::lfun-name fn ,name)
+         (ccl::lfun-name fn 'minimally-compiled-function))
+     (make-minimally-compiled-function ,name
+                                       ,lambda-list
+                                       ,doc
+                                       fn)))
 
 (defun context->native-environment (context)
   (let ((env (ccl::new-lexical-environment))
@@ -48,4 +54,7 @@
   (ccl:proclaimed-special-p var))
 
 (defun globally-constant-p (var)
-  (constantp var))
+  (ccl:constant-symbol-p var))
+
+(defun symbol-macro-p (var)
+  (not (eq (macroexpand var) var)))

@@ -1,4 +1,4 @@
-(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 #+sbcl
 (declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)
@@ -11,6 +11,7 @@
                              (context &optional (lambda-list :none) function-name))
                          #+(or)   ;for debugging purposes
                          (:print-function (lambda (object stream foo)
+                                            (declare (ignore object foo))
                                             (format stream "#<DEBUG-RECORD>"))))
   (context nil :type context)
   (lambda-list nil :type (or list (member :none)))

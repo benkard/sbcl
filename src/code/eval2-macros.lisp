@@ -1,4 +1,4 @@
-(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 
 (eval-when (:compile-toplevel :load-toplevel :execute)

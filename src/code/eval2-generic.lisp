@@ -1,14 +1,17 @@
-;;#!+sbcl
-;;(in-package "SB!EVAL2")
-;;#!-sbcl
-(in-package "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 (defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
+  (declare (ignore kind current-path source-loc))
   `(lambda () ,@body))
 
-(defmacro interpreted-lambda ((name current-path source-info) lambda-list &body body)
-  (declare (ignore name current-path source-info))
-  `(lambda ,lambda-list ,@body))
+(defmacro interpreted-lambda ((name current-path source-info lambda-list doc)
+                              real-lambda-list
+                              &body body)
+  (declare (ignore current-path source-info))
+  `(make-minimally-compiled-function ,name
+                                     ,lambda-list
+                                     ,doc
+                                     (lambda ,real-lambda-list ,@body)))
 
 (defun self-evaluating-p (form)
   (or (keywordp form)
@@ -54,9 +57,12 @@
     (values required optional rest? rest? keyp keys allowp aux aux)))
 
 (defun context->native-environment (context)
+  (declare (ignore context))
   (error "NYI"))
 (defun globally-special-p (var)
+  (declare (ignore var))
   (error "NYI"))
 (defun globally-constant-p (var)
   (constantp var))
-
+(defun symbol-macro-p (var)
+  (not (eq (macroexpand var) var)))
