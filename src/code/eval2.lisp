@@ -1,8 +1,6 @@
 (in-package "SB!EVAL2")
 
-#+sbcl
-(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                   (sb!c::store-closure-debug-pointer 3)))
+(declaim-optimizations)
 
 (defvar *mode* :execute)
 
@@ -87,16 +85,11 @@ children of CONTEXT can be stack-allocated."
 
 (declaim (ftype (function ((or symbol list)) eval-closure) prepare-fdef-ref))
 (defun prepare-fdef-ref (function-name)
-  #+sbcl
-  (let ((f* (sb!c::fdefinition-object function-name t)))
+  (let ((f* (find-fdefn function-name)))
     (eval-lambda (env) (%fdef-ref)
       (declare (ignore env))
-      (or (sb!c::fdefn-fun f*)
-          (error 'undefined-function :name function-name))))
-  #-sbcl
-  (eval-lambda (env) (%fdef-ref)
-    (declare (ignore env))
-    (fdefinition function-name)))
+      (or (fdefn-fun f*)
+          (error 'undefined-function :name function-name)))))
 
 (declaim (ftype (function () eval-closure) prepare-nil))
 (defun prepare-nil ()
@@ -120,23 +113,20 @@ children of CONTEXT can be stack-allocated."
 (declaim (ftype (function ((or symbol list) list) eval-closure) prepare-global-call))
 (defun prepare-global-call (f args)
   (let ((args* (map 'simple-vector #'prepare-form args))
-        #+sbcl
-        (f* (sb!c::fdefinition-object f t)))
+        (f* (find-fdefn f)))
     (if (< (length args) 20)
         (specialize m% (length args) (loop for i from 0 below 20 collect i)
           `(eval-lambda (env) (%global-call)
              (declare (ignorable env))
-             (funcall #+sbcl (or (sb!c::fdefn-fun f*)
-                                 (error 'undefined-function :name f))
-                      #-sbcl f
+             (funcall (or (fdefn-fun f*)
+                          (error 'undefined-function :name f))
                       ,@(loop for i from 0 below m%
                               collect
                                  `(funcall (the eval-closure (svref args* ,i))
                                            env)))))
         (eval-lambda (env) (%global-call)
-          (apply #+sbcl (or (sb!c::fdefn-fun f*)
-                            (error 'undefined-function :name f))
-                 #-sbcl f
+          (apply (or (fdefn-fun f*)
+                     (error 'undefined-function :name f))
                  (map 'list
                       (lambda (x) (funcall (the eval-closure x) env))
                       args*))))))
@@ -176,12 +166,6 @@ children of CONTEXT can be stack-allocated."
   (when (globally-constant-p var)
     (warn "~S is a constant and thus can't be set." var)))
 
-
-(defvar *args*)
-(defvar *argnum*)
-(defvar *more*)
-(defvar *envbox*)
-
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (body name current-path source-location lambda-list doc)
   (declare (ignorable name current-path source-location))
@@ -194,10 +178,7 @@ children of CONTEXT can be stack-allocated."
             ;; This is useful mainly for debugging purposes.
             (envbox (make-array '())))
         (interpreted-lambda (name current-path source-location lambda-list doc)
-                            #-sbcl (&rest *args*)
-                            #+sbcl (sb!int:&more *more* *argnum*)
-          (let ((*envbox* envbox)
-                #-sbcl (*argnum* (length *args*)))
+          (let ((*envbox* envbox))
             (funcall body* env)))))))
 
 (declaim (ftype (function (*) eval-closure) prepare-form))
@@ -236,22 +217,19 @@ children of CONTEXT can be stack-allocated."
             (destructuring-bind (i) (rest form)
               (eval-lambda (env) (%getarg)
                 (declare (ignore env))
-                #+sbcl (sb!c:%more-arg *more* i)
-                #-sbcl (elt *args* i))))
+                (get-arg i))))
            ((%fetchargs)
             (destructuring-bind (n) (rest form)
               (declare (fixnum n))
               (eval-lambda (env) (%fetchargs)
                 (dotimes (i n)
                   (setf (environment-value env 0 i)
-                        #+sbcl (sb!c:%more-arg *more* i)
-                        #-sbcl (elt *args* i))))))
+                        (get-arg i))))))
            ((%arglistfrom)
             (destructuring-bind (i) (rest form)
               (eval-lambda (env) (%arglistform)
                 (declare (ignore env))
-                #+sbcl (nthcdr i (multiple-value-list (sb!c:%more-arg-values *more* *argnum*)))
-                #-sbcl (nthcdr i *args*))))
+                (nthcdr i (get-arglist)))))
            ((%checkargs)
             (destructuring-bind (min &optional max)
                 (rest form)

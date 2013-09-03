@@ -26,3 +26,7 @@
                             :identity (not (minimally-compiled-function-name obj)))
     (format stream "~A ~A" '#:minimally-compiled-function
             (minimally-compiled-function-name obj))))
+
+(defvar *args*)
+(defvar *argnum*)
+(defvar *envbox*)

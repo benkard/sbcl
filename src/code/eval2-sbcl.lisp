@@ -1,7 +1,10 @@
 (in-package "SB!EVAL2")
 
-(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                   (sb!c::store-closure-debug-pointer 3)))
+(defmacro declaim-optimizations ()
+  `(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
+                      (sb!c::store-closure-debug-pointer 3))))
+
+(declaim-optimizations)
 
 (defvar *dump-info* nil)
 (defvar *set-info* nil)
@@ -42,12 +45,30 @@
     ,source-loc))
 
 (defmacro interpreted-lambda ((name current-path source-loc lambda-list doc)
-                              real-lambda-list &body body)
+                              &body body)
   `(make-minimally-compiled-function
     ,name ,lambda-list ,doc ,source-loc ,current-path
-    (sb!int:named-lambda minimally-compiled-function ,real-lambda-list
+    (sb!int:named-lambda minimally-compiled-function (sb!int:&more *more* *argnum*)
       (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)))
+
+(declaim (inline get-arg))
+(defun get-arg (i)
+  (sb!c:%more-arg *more* i))
+
+(declaim (inline get-arglist))
+(defun get-arglist ()
+  (multiple-value-list (sb!c:%more-arg-values *more* *argnum*)))
+
+(defun current-path ()
+  (when (boundp 'sb!c::*current-path*)
+    sb!c::*current-path*))
+
+(defun source-location ()
+  (when (and (current-path)
+             (typep (car (last (current-path)))
+                    '(or fixnum null)))
+    (sb!c::make-definition-source-location)))
 
 (defun self-evaluating-p (form)
   (sb!int:self-evaluating-p form))
@@ -87,3 +108,11 @@
   (eq :constant (sb!int:info :variable :kind var)))
 (defun symbol-macro-p (var)
   (eq :macro (sb!int:info :variable :kind var)))
+
+(declaim (inline find-fdefn))
+(defun find-fdefn (function-name)
+  (sb!c::fdefinition-object function-name t))
+
+(declaim (inline fdefn-fun))
+(defun fdefn-fun (fdefn)
+  (sb!c::fdefn-fun fdefn))

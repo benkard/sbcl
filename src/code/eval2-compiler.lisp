@@ -114,7 +114,6 @@
   (null (intersection list1 list2)))
 
 (defun compile-lambda (lambda-form &key (name nil) (blockp nil))
-  ;;#+sbcl (declare (optimize debug (safety 3) (speed 0) (space 0) sb!c::store-closure-debug-pointer))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
@@ -123,10 +122,6 @@
         (declare (ignore more-context more-count))
         (declare (ignorable auxp morep))
         (setq rest (or rest (gensym "REST")))
-        #+sbcl
-        (when morep
-          (error "The interpreter does not support the lambda-list keyword ~S"
-                 'sb!int:&more))
         (let* ((required-num (length required))
                (optional-num (length optional))
                (varspecs (list))
@@ -142,16 +137,8 @@
                          (some (lambda (x) (maybe-closes-p *context* x))
                                default-values))))
           (setq varspecs (nreverse varspecs))
-          (let* ((current-path #+sbcl (when (boundp 'sb!c::*current-path*)
-                                        sb!c::*current-path*))
-                 (source-location
-                   #+sbcl (when
-                              (and current-path
-                                   (typep (car (last current-path))
-                                          '(or fixnum null)))
-                            (sb!c::make-definition-source-location)))
-                 (i 0))
-            `(%lambda (,name ,current-path ,source-location ,lambda-list nil)
+          (let* ((i 0))
+            `(%lambda (,name ,(current-path) ,(source-location) ,lambda-list nil)
                ,(compile-form
                  `(%let* (,lambda-list ,name t)
                          ,(if (disjointp specials required)

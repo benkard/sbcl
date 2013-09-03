@@ -1,17 +1,35 @@
 (in-package "SB!EVAL2")
 
+(defmacro declaim-optimizations ()
+  `(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0))))
+
 (defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
   (declare (ignore kind current-path source-loc))
   `(lambda () ,@body))
 
 (defmacro interpreted-lambda ((name current-path source-info lambda-list doc)
-                              real-lambda-list
                               &body body)
   (declare (ignore current-path source-info))
   `(make-minimally-compiled-function ,name
                                      ,lambda-list
                                      ,doc
-                                     (lambda ,real-lambda-list ,@body)))
+                                     (lambda (&rest *args*)
+                                       (let ((*argnum* (length *args*)))
+                                         ,@body))))
+
+(declaim (inline get-arg))
+(defun get-arg (i)
+  (elt *args* i))
+
+(declaim (inline get-arglist))
+(defun get-arglist ()
+  *args*)
+
+(defun current-path ()
+  nil)
+
+(defun source-location ()
+  nil)
 
 (defun self-evaluating-p (form)
   (or (keywordp form)
@@ -66,3 +84,8 @@
   (constantp var))
 (defun symbol-macro-p (var)
   (not (eq (macroexpand var) var)))
+
+(defun find-fdefn (function-name)
+  'function-name)
+(defun fdefn-fun (fdefn)
+  (fdefinition fdefn))

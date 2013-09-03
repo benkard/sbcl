@@ -12,10 +12,11 @@
                   (lambda ,lambda-list ,@body)))
 
 (defmacro interpreted-lambda ((name current-path source-info lambda-list doc)
-                              real-lambda-list
                               &body body)
   (declare (ignore current-path source-info))
-  `(let ((fn (lambda ,real-lambda-list ,@body)))
+  `(let ((fn (lambda (&rest *args*)
+               (let ((*argnum* (length *args*)))
+                 ,@body))))
      (if name
          (ccl::lfun-name fn ,name)
          (ccl::lfun-name fn 'minimally-compiled-function))
@@ -58,3 +59,15 @@
 
 (defun symbol-macro-p (var)
   (not (eq (macroexpand var) var)))
+
+(declaim (inline find-fdefn))
+(defun find-fdefn (function-name)
+  (ccl::symptr->symvector
+   (ccl::%symbol->symptr
+    (ccl::validate-function-name function-name))))
+
+(declaim (inline fdefn-fun))
+(defun fdefn-fun (fdefn)
+  (let ((fun (ccl::%svref fdefn target::symbol.fcell-cell)))
+    (when (not (eq fun ccl::%unbound-function%))
+      fun)))
