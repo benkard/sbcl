@@ -138,7 +138,7 @@
                                default-values))))
           (setq varspecs (nreverse varspecs))
           (let* ((i 0))
-            `(%lambda (,name ,(current-path) ,(source-location) ,lambda-list nil)
+            `(%lambda (,name ,(current-path) ,(current-location) ,lambda-list nil)
                ,(compile-form
                  `(%let* (,lambda-list ,name t)
                          ,(if (disjointp specials required)
@@ -543,7 +543,7 @@
               throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))
             ((the #+sbcl sb!ext:truly-the)
-             `(,(first form) ,(second form) ,(compile-form (third form))))
+             (compile-form (third form)))
             ((progn)
              (compile-progn (rest form) mode))
             ((block)

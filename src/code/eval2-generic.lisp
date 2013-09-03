@@ -28,7 +28,7 @@
 (defun current-path ()
   nil)
 
-(defun source-location ()
+(defun current-location ()
   nil)
 
 (defun self-evaluating-p (form)

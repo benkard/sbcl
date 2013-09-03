@@ -1385,7 +1385,7 @@ handled by any other handler, it will be muffled.")
   (when (typep function 'sb!eval2:minimally-compiled-function)
     (return-from function-file-namestring
       (sb!c:definition-source-location-namestring
-       (sb!eval:minimally-compiled-function-source-location function))))
+       (sb!eval2:minimally-compiled-function-source-location function))))
   (let* ((fun (sb!kernel:%fun-fun function))
          (code (sb!kernel:fun-code-header fun))
          (debug-info (sb!kernel:%code-debug-info code))

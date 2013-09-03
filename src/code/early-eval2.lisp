@@ -29,4 +29,5 @@
               (minimally-compiled-function-name obj)))))
 
 (defvar *more*)
+(defvar *argnum*)
 (defvar *envbox*)

@@ -64,7 +64,7 @@
   (when (boundp 'sb!c::*current-path*)
     sb!c::*current-path*))
 
-(defun source-location ()
+(defun current-location ()
   (when (and (current-path)
              (typep (car (last (current-path)))
                     '(or fixnum null)))
