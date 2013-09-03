@@ -428,3 +428,12 @@ children of CONTEXT can be stack-allocated."
                                (list a b c d dp e f fp g gp r h i))))))
                         1 2 3 4 :f 5 :e 6))
 ;; => (1 2 3 4 T 6 5 T 12 NIL (:F 5 :E 6) 1 2)
+
+#+(or)
+(with-context (make-null-context)
+  (compile-form
+   '(ccl:compiler-let ((x (+ 10 12)))
+     (macrolet ((g () (setq x 100))
+                (f () `(list ,x)))
+       (g)
+       (f)))))

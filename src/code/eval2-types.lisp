@@ -9,7 +9,7 @@
 (defstruct (debug-record (:constructor
                              make-debug-record
                              (context &optional (lambda-list :none) function-name))
-                         #+(or)   ;for debugging purposes
+                         #-(or)   ;for debugging purposes
                          (:print-function (lambda (object stream foo)
                                             (declare (ignore object foo))
                                             (format stream "#<DEBUG-RECORD>"))))

@@ -25,28 +25,29 @@
 
 
 ;; ----
-(define-symbol-macro go-tag-index-mapping nil)
-(define-symbol-macro go-tag-catch-tag-mapping nil)
+(defvar *go-tag-index-mapping* nil)
+(defvar *go-tag-catch-tag-mapping* nil)
 
-(defmacro %go (tag &environment env)
-  `(throw ',(cdr (assoc tag (macroexpand 'go-tag-catch-tag-mapping env)
-                        :test 'eq))
-     ,(cdr (assoc tag (macroexpand 'go-tag-index-mapping env)
-                  :test 'eq))))
+(defmacro %go (tag)
+  (declare (ignore tag))
+  (error "GO outside of TAGBODY"))
 
-(defmacro %parsed-tagbody (&body body &environment env)
+(defmacro %parsed-tagbody (&body body)
   (let* ((catch-tag (gensym "TAGBODY-CATCH-TAG"))
          (labels-and-bodies (parse-tagbody-tags-and-bodies body))
          (tagbody-labels (mapcar 'first labels-and-bodies))
          (tagbody-blocks (mapcar 'rest labels-and-bodies)))
-    `(symbol-macrolet ((go-tag-catch-tag-mapping
-                         ,(append (loop for label in tagbody-labels
-                                        collect `(,label . ,catch-tag))
-                                  (macroexpand 'go-tag-catch-tag-mapping env)))
-                       (go-tag-index-mapping
-                         ,(append (loop for label in tagbody-labels
-                                        for i from 0
-                                        collect `(,label . ,i))
-                                  (macroexpand 'go-tag-index-mapping env))))
-       (%tagbody (,catch-tag)
-         ,@tagbody-blocks))))
+    `(compiler-let ((*go-tag-catch-tag-mapping*
+                      (append ',(loop for label in tagbody-labels
+                                      collect `(,label . ,catch-tag))
+                              *go-tag-catch-tag-mapping*))
+                    (*go-tag-index-mapping*
+                      (append ',(loop for label in tagbody-labels
+                                      for i from 0
+                                      collect `(,label . ,i))
+                              *go-tag-index-mapping*)))
+       (macrolet ((%go (tag)
+                    `(throw ',(cdr (assoc tag *go-tag-catch-tag-mapping* :test 'eq))
+                       ,(cdr (assoc tag *go-tag-index-mapping* :test 'eq)))))
+         (%tagbody (,catch-tag)
+           ,@tagbody-blocks)))))

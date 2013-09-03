@@ -543,7 +543,7 @@
                                   (context-add-macros *context* bindings)
                                   specials)
                      (compile-progn body mode))))))
-            ((#+ccl ccl:compiler-let #+sbcl sb-cltl2:compiler-let)
+            ((compiler-let #+ccl ccl:compiler-let #+sbcl sb-cltl2:compiler-let)
              (destructuring-bind (bindings &rest body) (rest form)
                (with-context (context-add-evaluation-bindings
                               *context*
