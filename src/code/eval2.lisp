@@ -268,6 +268,20 @@ children of CONTEXT can be stack-allocated."
                     (error 'simple-program-error
                            :format-control "invalid number of arguments: ~D (expected: <=~D)"
                            :format-arguments (list argnum max)))))))
+           ((%checkkeyargs)
+            (destructuring-bind (positional-num)
+                (rest form)
+              (declare (fixnum positional-num))
+              (eval-lambda (env) (%checkkeyargs)
+                (let ((argnum *argnum*))
+                  (declare (fixnum argnum))
+                  (when (oddp (- argnum positional-num))
+                    (let ((rest (funcall
+                                 (prepare-form `(%arglistfrom ,positional-num))
+                                 env)))
+                      (error 'simple-program-error
+                             :format-control "odd number of keyword arguments: ~S"
+                             :format-arguments (list rest))))))))
            ((%varget)
             (destructuring-bind (var) (rest form)
               (eval-lambda (env) (%varget)

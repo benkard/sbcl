@@ -172,7 +172,11 @@
                                   collect `(,suppliedp (< ,i %argnum))
                                   do (incf i))
                           ,@(when (or restp keyp)
-                              `((,rest (%arglistfrom ,i))))
+                              `((,rest (%arglistfrom ,i))
+                                ,@(when keyp
+                                    `((,(gensym)
+                                       (%checkkeyargs
+                                        ,(+ required-num optional-num)))))))
                           ,@(loop for arg in keys
                                   for var = (lambda-binding-main-var arg)
                                   for key = (lambda-key arg)
@@ -278,7 +282,7 @@
          ;;(format t "(~&~S)" (first form))
          (case (first form)
            ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox
-             %checkargs)
+             %checkargs %checkkeyargs)
             form)
            ((%varset)
             (destructuring-bind (var val) (rest form)
