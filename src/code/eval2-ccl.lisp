@@ -38,7 +38,7 @@
      (ccl::new-lexical-environment))
     (context
      (let ((env
-             (context->native-environment (context-parent context))) 
+             (context->native-environment (context-parent context)))
            (macros
              (loop for (name . expander) in (context-macros context)
                    collect `(,name ,expander)))

@@ -428,7 +428,6 @@ children of CONTEXT can be stack-allocated."
       (with-open-file (in file)
         (load2 in))))
 
-
 #+(or)
 (call-with-environment (make-null-environment)
   (prepare-form (with-context (make-null-context)
