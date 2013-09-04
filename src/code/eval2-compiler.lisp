@@ -110,6 +110,14 @@
 (defun disjointp (list1 list2)
   (null (intersection list1 list2)))
 
+(defmacro lazy-getf (plist indicator default)
+  (let ((sentinel (gensym))
+        (result (gensym "RESULT")))
+    `(let* ((,result (getf ,plist ,indicator ',sentinel)))
+       (if (eq ,result ',sentinel)
+           ,default
+           ,result))))
+
 (defun compile-lambda (lambda-form &key (name nil) (blockp nil))
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
@@ -166,7 +174,7 @@
                                   for key = (lambda-key arg)
                                   for default = (lambda-binding-default arg)
                                   for suppliedp = (lambda-binding-suppliedp-var arg)
-                                  collect `(,var (getf ,rest ',key ,default))
+                                  collect `(,var (lazy-getf ,rest ',key ,default))
                                   when suppliedp
                                   collect `(,suppliedp
                                             (and (get-properties ,rest '(,key)) t))

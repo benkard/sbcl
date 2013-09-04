@@ -291,10 +291,7 @@
        (sb!eval2:call-with-context
         (sb!eval2:native-environment->context lexenv)
         (lambda ()
-          (sb!eval2:compile-form exp
-                                 (if sb!impl::*eval-tlf-index*
-                                     :not-compile-time
-                                     :execute)))))))
+          (sb!eval2:compile-form exp :execute))))))
     ((:compile)
      (sb!eval:eval-in-native-environment exp lexenv))))
 
