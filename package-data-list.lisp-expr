@@ -2918,7 +2918,9 @@ structure representations"
                "MINIMALLY-COMPILED-FUNCTION-LAMBDA-LIST"
                "MINIMALLY-COMPILED-FUNCTION-DOCUMENTATION"
                "MINIMALLY-COMPILED-FUNCTION-SOURCE-LOCATION"
-               "MINIMALLY-COMPILED-FUNCTION-SOURCE-PATH"))
+               "MINIMALLY-COMPILED-FUNCTION-SOURCE-PATH"
+               "EVAL2"
+               "LOAD2"))
 
    #!+win32
    #s(sb-cold:package-data

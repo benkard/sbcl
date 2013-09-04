@@ -403,6 +403,32 @@ children of CONTEXT can be stack-allocated."
    t))
 
 
+(defun eval2 (form &optional environment)
+  (let ((context (if environment
+                     (native-environment->context environment)
+                     (make-null-context)))
+        (env (make-null-environment)))
+    (call-with-environment
+     env
+     (prepare-form (with-context context (compile-form form :execute))))))
+
+(defun load2 (file)
+  (if (streamp file)
+      (loop with eof = (gensym)
+            for form = (read file nil eof nil)
+            until (eq form eof)
+            when (listp form)
+            do (format t "~&; (~S~:[~; ~S~:[~; ...~]~])"
+                       (car form) (cdr form) (cadr form) (cddr form))
+            do (funcall
+                (prepare-form
+                 (with-context (sb-eval2:make-null-context)
+                   (compile-form form :not-compile-time)))
+                (make-null-environment)))
+      (with-open-file (in file)
+        (load2 in))))
+
+
 #+(or)
 (call-with-environment (make-null-environment)
   (prepare-form (with-context (make-null-context)
