@@ -431,45 +431,43 @@
                                    (some #'globally-special-p vars)))))
                    (with-context binding-context
                      `(%with-environment :indefinite-extent ,set-box-p (,debug-info ,varnum)
-                        ,(let ((dynvals-sym (gensym "DYNVALS"))
-                               (dynvars-sym (gensym "DYNVARS")))
-                           `(,@(if dynamic-block-p
-                                   `(progv '(,dynvars-sym ,dynvals-sym) '(nil nil))
-                                   `(progn))
-                             ,@init-block
-                             ,@(nlet iter ((remaining-bindings real-bindings))
-                                 (if (endp remaining-bindings)
-                                     (let ((real-body-context
-                                             (context-add-specials body-context specials)))
-                                       (if dynamic-block-p
-                                           `((progv (%varget ,dynvars-sym)
-                                                 (%varget ,dynvals-sym)
-                                               ,(with-context real-body-context
-                                                  (compile-progn body))))
-                                           `(,(with-context real-body-context
-                                                (compile-progn body)))))
-                                     (destructuring-bind (var . value-form)
-                                         (first remaining-bindings)
-                                       (let ((val* (with-context binding-context
-                                                     (compile-form value-form))))
-                                         (if (or (member (the symbol var) specials)
-                                                 (globally-special-p var))
-                                             (progn
-                                               (context-add-special! body-context var)
-                                               (if (eq (first form) '%let)
-                                                   `((%varpush ,val* ,dynvals-sym)
-                                                     (%varpush ',var ,dynvars-sym)
-                                                     ,@(iter (rest remaining-bindings)))
-                                                   `((%with-binding ,var ,val*
-                                                       ,@(iter (rest remaining-bindings))))))
-                                             (progn
-                                               (context-add-env-lexical! body-context var)
-                                               (let* ((lexical (context-find-lexical body-context var))
-                                                      (nesting (lexical-nesting lexical))
-                                                      (offset (lexical-offset lexical)))
-                                                 `(,@(unless (member var noinit-vars)
-                                                       `((%envset ,nesting ,offset ,val*)))
-                                                   ,@(iter (rest remaining-bindings))))))))))))))))))
+                        (,@(if dynamic-block-p
+                               `(progv '(*dynvars* *dynvals*) '(nil nil))
+                               `(progn))
+                         ,@init-block
+                         ,@(nlet iter ((remaining-bindings real-bindings))
+                             (if (endp remaining-bindings)
+                                 (let ((real-body-context
+                                         (context-add-specials body-context specials)))
+                                   (if dynamic-block-p
+                                       `((progv (%varget *dynvars*)
+                                             (%varget *dynvals*)
+                                           ,(with-context real-body-context
+                                              (compile-progn body))))
+                                       `(,(with-context real-body-context
+                                            (compile-progn body)))))
+                                 (destructuring-bind (var . value-form)
+                                     (first remaining-bindings)
+                                   (let ((val* (with-context binding-context
+                                                 (compile-form value-form))))
+                                     (if (or (member (the symbol var) specials)
+                                             (globally-special-p var))
+                                         (progn
+                                           (context-add-special! body-context var)
+                                           (if (eq (first form) '%let)
+                                               `((%varpush ,val* *dynvals*)
+                                                 (%varpush ',var *dynvars*)
+                                                 ,@(iter (rest remaining-bindings)))
+                                               `((%with-binding ,var ,val*
+                                                                ,@(iter (rest remaining-bindings))))))
+                                         (progn
+                                           (context-add-env-lexical! body-context var)
+                                           (let* ((lexical (context-find-lexical body-context var))
+                                                  (nesting (lexical-nesting lexical))
+                                                  (offset (lexical-offset lexical)))
+                                             `(,@(unless (member var noinit-vars)
+                                                   `((%envset ,nesting ,offset ,val*)))
+                                               ,@(iter (rest remaining-bindings)))))))))))))))))
             ((load-time-value)
              (destructuring-bind (form) (rest form)
               `(load-time-value ,(compile-form form))))

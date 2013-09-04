@@ -28,6 +28,8 @@
       (format stream "~A ~A" '#:minimally-compiled-function
               (minimally-compiled-function-name obj)))))
 
+(defvar *dynvars*)
+(defvar *dynvals*)
 (defvar *context*)
 (defvar *more*)
 (defvar *argnum*)
