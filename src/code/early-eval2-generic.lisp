@@ -27,6 +27,7 @@
     (format stream "~A ~A" '#:minimally-compiled-function
             (minimally-compiled-function-name obj))))
 
+(defvar *context*)
 (defvar *args*)
 (defvar *argnum*)
 (defvar *envbox*)

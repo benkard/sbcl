@@ -1,5 +1,9 @@
 (in-package "SB!EVAL2")
 
+(define-condition simple-program-error (program-error)
+  ())
+
+#+(or)
 (setf (find-class 'simple-program-error)
       (find-class 'ccl::simple-program-error))
 

@@ -54,14 +54,12 @@
       (psetq whole?      (second lambda-list)
              lambda-list (cddr lambda-list)))
     `(block ,(fun-name-block-name name)
-       (destructuring-bind ,lambda-list (rest ,whole)
-         (let (,@(if env?
+       (let (,@(if env?
                      `((,env? ,env))
-                     `())
-               ,@(if whole?
-                     `((,whole? ,whole))
                      `()))
-           ,@body)))))
+         (,@(if whole? `(destructuring-bind ,whole? ,whole) `(progn))
+           (destructuring-bind ,lambda-list (rest ,whole)
+             ,@body))))))
 
 (defun parse-lambda-list (lambda-list)
   ;; returns values:

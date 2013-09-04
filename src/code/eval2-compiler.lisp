@@ -34,9 +34,6 @@
   ;;(%tagbody ...)
   )
 
-
-(defvar *context*)
-
 (defun compile-nil ()
   ''nil)
 
