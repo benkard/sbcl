@@ -422,7 +422,7 @@ children of CONTEXT can be stack-allocated."
                        (car form) (cdr form) (cadr form) (cddr form))
             do (funcall
                 (prepare-form
-                 (with-context (sb-eval2:make-null-context)
+                 (with-context (make-null-context)
                    (compile-form form :not-compile-time)))
                 (make-null-environment)))
       (with-open-file (in file)
