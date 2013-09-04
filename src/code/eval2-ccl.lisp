@@ -1,6 +1,6 @@
 (in-package "SB!EVAL2")
 
-(define-condition simple-program-error (program-error)
+(define-condition simple-program-error (ccl::simple-program-error)
   ())
 
 #+(or)

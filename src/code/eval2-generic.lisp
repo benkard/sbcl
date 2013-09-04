@@ -57,7 +57,7 @@
        (let (,@(if env?
                      `((,env? ,env))
                      `()))
-         (,@(if whole? `(destructuring-bind ,whole? ,whole) `(progn))
+         (,@(if whole? `(destructuring-bind (&rest ,whole?) ,whole) `(progn))
            (destructuring-bind ,lambda-list (rest ,whole)
              ,@body))))))
 
