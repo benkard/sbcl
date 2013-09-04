@@ -48,8 +48,7 @@
      :macro macros
      :symbol-macro symbol-macros
      ;;:declare ...
-     )
-    env))
+     )))
 
 (defun globally-special-p (var)
   (ccl:proclaimed-special-p var))
