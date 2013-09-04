@@ -95,13 +95,32 @@
   ;;FIXME
   (make-null-context))
 (defun context->native-environment (context)
-  (let ((functions
-          (loop for (name . expander) in (context-collect context 'context-macros)
-                collect `(,name . (sb!c::macro . ,expander))))
-        (vars
-          (loop for (name . form) in (context-collect context 'context-symbol-macros)
-                collect `(,name . (sb!c::macro . ,form)))))
-    (sb!c::internal-make-lexenv functions vars nil nil nil nil nil nil nil nil nil)))
+  (etypecase context
+    (null
+     (sb!c::make-null-lexenv))
+    (context
+     (let ((macros
+             (loop for (name . expander) in (context-macros context)
+                   collect `(,name . (sb!c::macro . ,expander))))
+           (symbol-macros
+             (loop for (name . form) in (context-symbol-macros context)
+                   collect `(,name . (sb!c::macro . ,form))))
+           (functions
+             (loop for lexical in (context-lexicals context)
+                   for name = (lexical-name lexical)
+                   when (and (listp name) (eq 'function (car name)))
+                     collect (let (leaf)  ;a null SB!C::FUNCTIONAL
+                               `(,(second name) . ,leaf))))
+           (vars
+             (loop for lexical in (context-lexicals context)
+                   for name = (lexical-name lexical)
+                   unless (and (listp name) (eq 'function (car name)))
+                     collect (let (leaf)  ;a null SB!C::LEAF
+                               `(,name . ,leaf)))))
+       (sb!c::make-lexenv :default (context->native-environment
+                                    (context-parent context))
+                          :funs (append macros functions)
+                          :vars (append symbol-macros vars))))))
 (defun globally-special-p (var)
   (eq :special (sb!int:info :variable :kind var)))
 (defun globally-constant-p (var)

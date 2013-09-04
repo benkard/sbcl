@@ -24,35 +24,47 @@
      (if name
          (ccl::lfun-name fn ,name)
          (ccl::lfun-name fn 'minimally-compiled-function))
-     (make-minimally-compiled-function ,name
-                                       ,lambda-list
-                                       ,doc
-                                       fn)))
+     (let* ((mincfun (make-minimally-compiled-function ,name
+                                                       ,lambda-list
+                                                       ,doc
+                                                       fn))
+            (bits (ccl::lfun-bits mincfun)))
+       (ccl::lfun-bits mincfun (logior bits (ash 1 ccl::$lfbits-nonnullenv-bit)))
+       mincfun)))
 
 (defun context->native-environment (context)
-  (let ((env (ccl::new-lexical-environment))
-        (macros
-          (loop for (name . expander) in (context-collect context 'context-macros)
-                collect `(,name ,expander)))
-        (symbol-macros
-          (loop for (name . form) in (context-collect context 'context-symbol-macros)
-                collect `(,name ,form))))
-    (ccl::augment-environment
-     env
-     :function (mapcan (lambda (lexical)
-                         (when (and (listp (lexical-name lexical))
+  (etypecase context
+    (null
+     (ccl::new-lexical-environment))
+    (context
+     (let ((env
+             (context->native-environment (context-parent context))) 
+           (macros
+             (loop for (name . expander) in (context-macros context)
+                   collect `(,name ,expander)))
+           (symbol-macros
+             (loop for (name . form) in (context-symbol-macros context)
+                   collect `(,name ,form)))
+           (functions
+             (mapcan (lambda (lexical)
+                       (when (and (listp (lexical-name lexical))
+                                  (eq 'function (first (lexical-name lexical))))
+                         (list (second (lexical-name lexical)))))
+                     (context-lexicals context)))
+           (variables
+             (mapcan (lambda (lexical)
+                       (unless (and (listp (lexical-name lexical))
                                     (eq 'function (first (lexical-name lexical))))
-                           (list (second (lexical-name lexical)))))
-                       (context-collect context 'context-lexicals))
-     :variable (mapcan (lambda (lexical)
-                         (unless (and (listp (lexical-name lexical))
-                                      (eq 'function (first (lexical-name lexical))))
-                           (list (lexical-name lexical))))
-                       (context-collect context 'context-lexicals))
-     :macro macros
-     :symbol-macro symbol-macros
-     ;;:declare ...
-     )))
+                         (list (lexical-name lexical))))
+                     (context-lexicals context))))
+       (ccl::augment-environment
+        env
+        :function functions
+        :variable variables
+        :macro macros
+        :symbol-macro symbol-macros
+        ;;:declare ...
+        )))))
 
 (defun globally-special-p (var)
   (ccl:proclaimed-special-p var))
