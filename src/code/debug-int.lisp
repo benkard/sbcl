@@ -890,8 +890,7 @@
                          :code-locations (vector code-location)
                          :debug-fun debug-fun
                          :source-path source-path)))
-          (if (and call-debug-info
-                   (sb!eval2::debug-record-lambda-list call-debug-info))
+          (if call-debug-info
               (let ((interpreted-frame
                       (make-interpreted-frame
                        up-frame
