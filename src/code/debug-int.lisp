@@ -2225,17 +2225,16 @@ register."
          (compiled-code-location
           (typecase obj2
             (compiled-code-location
-             (sub-compiled-code-location= obj1 obj2))
+             (sub-compiled-code-location= obj1 obj2))))
             ;; (There used to be more cases back before sbcl-0.7.0,,
             ;; when we did special tricks to debug the IR1
             ;; interpreter.)))
-         (interpreted-code-location
-          (typecase obj2
-            (interpreted-code-location
-             (sub-interpreted-code-location= obj1 obj2))))
          ;; (There used to be more cases back before sbcl-0.7.0,,
          ;; when we did special tricks to debug IR1-interpreted code.)
-         )))))
+         (interpreted-code-location
+           (typecase obj2
+             (interpreted-code-location
+              (sub-interpreted-code-location= obj1 obj2)))))))
 (defun sub-compiled-code-location= (obj1 obj2)
   (= (compiled-code-location-pc obj1)
      (compiled-code-location-pc obj2)))
