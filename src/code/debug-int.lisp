@@ -808,22 +808,45 @@
               'sb!eval2::minimally-compiled-function)
     (return-from possibly-an-interpreted-frame
       frame))
-  (let ((eval-closure-frame (frame-find-upframe-if
-                             (lambda (x)
-                               (let ((fname (debug-fun-name (frame-debug-fun x))))
-                                 (or (eq fname 'sb!eval2::eval-closure)
-                                     (and (listp fname)
-                                          (eq 'sb!eval2::eval-closure (first fname))))))
-                             up-frame)))
+  (let ((eval-closure-frame
+          (labels ((checked-frame-closure-vars (frame)
+                     (let ((closure? (frame-closure-vars frame)))
+                       (typecase closure?
+                         (function closure?)
+                         (t (warn 'simple-warning
+                                  :format-control "Frame ~S has an invalid closure pointer (~S)"
+                                  :format-arguments (list frame closure?))))))
+                   (eval-closure-frame-p (frame)
+                     (let ((fname (debug-fun-name (frame-debug-fun frame))))
+                       (or (eq fname 'sb!eval2::eval-closure)
+                           (and (listp fname)
+                                (eq 'sb!eval2::eval-closure (first fname))))))
+                   (interpreted-call-frame-p (frame)
+                     (eq (debug-fun-name (frame-debug-fun frame))
+                         'sb!eval2::minimally-compiled-function))
+                   (has-debug-info-p (frame)
+                     (let ((closure?
+                             (checked-frame-closure-vars frame)))
+                       (and closure? (sb!eval2::source-path closure?))))
+                   (collect-descendent-eval-closure-frames (frame)
+                     (if (or (null frame)
+                             (interpreted-call-frame-p frame))
+                         nil
+                         (let* ((inner-frame (frame-up frame))
+                                (more-frames (collect-descendent-eval-closure-frames
+                                              inner-frame)))
+                           (if (eval-closure-frame-p frame)
+                               (cons frame more-frames)
+                               more-frames)))))
+            (first
+             (last
+              (remove-if-not #'has-debug-info-p
+                             (collect-descendent-eval-closure-frames
+                              (frame-up frame))))))))
     (if (null eval-closure-frame)
         (frame-down frame)
         (let* ((debug-fun (frame-debug-fun frame))
-               (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
-                          (typecase closure?
-                            (function closure?)
-                            (t (warn 'simple-warning
-                                     :format-control "Frame ~S has an invalid closure pointer (~S)"
-                                     :format-arguments (list eval-closure-frame closure?))))))
+               (closure (frame-closure-vars eval-closure-frame))
                (source-path (sb!eval2::source-path closure))
                (env (interpreter-frame-environment frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))
