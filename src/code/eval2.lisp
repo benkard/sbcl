@@ -2,8 +2,6 @@
 
 (declaim-optimizations)
 
-(defvar *mode* :execute)
-
 (declaim (inline call-with-environment))
 (declaim (ftype (function (environment function) *) call-with-environment))
 (defun call-with-environment (env thunk)

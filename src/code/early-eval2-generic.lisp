@@ -29,6 +29,7 @@
 
 (defvar *dynvars*)
 (defvar *dynvals*)
+(defvar *mode* :execute)
 (defvar *context*)
 (defvar *args*)
 (defvar *argnum*)
