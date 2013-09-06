@@ -192,19 +192,17 @@
   (values))
 (defun context-add-env-functions (context fs)
   (context-add-env-lexicals context (mapcar (lambda (x) `(function ,x)) fs)))
-(defun context-find-lexical (context var)
+(defun context-collect-lexicals (context)
   (loop with env-level = 0
         until (null context)
-        for record = (find var
-                           (context-lexicals context)
-                           :key #'lexical-name
-                           :test #'equal)
-        when record
-          do (return
-               (lexical-with-nesting record env-level))
+        for records = (context-lexicals context)
+        nconc (mapcar #'(lambda (record) (lexical-with-nesting record env-level))
+                      records)
         when (context-env-hop context)
           do (incf env-level)
         do (setq context (context-parent context))))
+(defun context-find-lexical (context var)
+  (find var (context-collect-lexicals context) :key #'lexical-name))
 (declaim (ftype (function (context (or symbol list)) *) context-find-function))
 (defun context-find-function (context f)
   (context-find-lexical context `(function ,f)))

@@ -686,20 +686,20 @@
 (defun compute-interpreted-debug-vars (env)
   (let ((debug-info (and env (sb!eval2::environment-debug-record env))))
     (when debug-info
-      (let* ((context (and debug-info (sb!eval2::debug-record-context debug-info)))
-             (vars    (remove-if #'consp
-                                 (mapcar #'sb!eval2::lexical-name
-                                         (sb!eval2::context-collect context 'sb!eval2::context-lexicals)))))
-        (flet ((make-debug-var (var)
-                 (let ((lexical
-                         (sb!eval2::context-find-lexical context var)))
+      (let* ((var-ids  (make-hash-table :test 'equal))
+             (context  (and debug-info (sb!eval2::debug-record-context debug-info)))
+             (lexicals (remove-if #'consp
+                                  (sb!eval2::context-collect-lexicals context)
+                                  :key #'sb!eval2::lexical-name)))
+        (flet ((make-debug-var (lexical)
+                 (let ((var (sb!eval2::lexical-name lexical)))
                    (make-interpreted-debug-var
                     var
-                    0
+                    (incf (gethash var var-ids -1))
                     (sb!eval2::lexical-nesting lexical)
                     (sb!eval2::lexical-offset lexical)
                     env))))
-          (coerce (mapcar #'make-debug-var vars) 'simple-vector))))))
+          (coerce (mapcar #'make-debug-var lexicals) 'simple-vector))))))
 
 
 (defun interpreted-call-frame-environment (frame)
