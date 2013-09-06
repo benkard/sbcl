@@ -688,9 +688,10 @@
     (when debug-info
       (let* ((var-ids  (make-hash-table :test 'equal))
              (context  (and debug-info (sb!eval2::debug-record-context debug-info)))
-             (lexicals (remove-if #'consp
-                                  (sb!eval2::context-collect-lexicals context)
-                                  :key #'sb!eval2::lexical-name)))
+             (lexicals (nreverse
+                        (remove-if #'consp
+                                   (sb!eval2::context-collect-lexicals context)
+                                   :key #'sb!eval2::lexical-name))))
         (flet ((make-debug-var (lexical)
                  (let ((var (sb!eval2::lexical-name lexical)))
                    (make-interpreted-debug-var
