@@ -313,7 +313,8 @@
             (:constructor make-interpreted-debug-fun)
             (:copier nil))
   %name
-  %lambda-list-gen)
+  %lambda-list-gen
+  eval-closure)
 
 (defstruct (compiled-debug-fun
             (:include debug-fun)
@@ -820,9 +821,9 @@
                (closure (let ((closure? (frame-closure-vars eval-closure-frame)))
                           (typecase closure?
                             (function closure?)
-                            (number (warn 'simple-warning
-                                          :format-control "Frame ~S has an invalid closure pointer (~S)"
-                                          :format-arguments (list eval-closure-frame closure?))))))
+                            (t (warn 'simple-warning
+                                     :format-control "Frame ~S has an invalid closure pointer (~S)"
+                                     :format-arguments (list eval-closure-frame closure?))))))
                (source-path (sb!eval2::source-path closure))
                (env (interpreter-frame-environment frame))
                (debug-info (and env (sb!eval2::environment-debug-record env)))
@@ -842,7 +843,8 @@
                                        args))
                   :%debug-vars debug-vars
                   :%function (frame-closure-vars frame)
-                  :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))))
+                  :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))
+                  :eval-closure closure))
                (code-location
                  (compute-interpreted-code-location interpreted-debug-fun
                                                     source-path)))
@@ -2080,7 +2082,7 @@ register."
                   (return (svref blocks (1- i)))))))))
 
 (defun interpreted-debug-fun-debug-info (debug-fun)
-  (eval-closure-debug-info (debug-fun-%function debug-fun)))
+  (eval-closure-debug-info (interpreted-debug-fun-eval-closure debug-fun)))
 
 ;;; Return the CODE-LOCATION's DEBUG-SOURCE.
 (defun code-location-debug-source (code-location)

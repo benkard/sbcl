@@ -87,3 +87,11 @@
   'function-name)
 (defun fdefn-fun (fdefn)
   (fdefinition fdefn))
+
+(defun compile-form (form
+                     &optional (mode      *mode*)
+                     &aux      (*mode*    :execute))
+  (%compile-form form mode))
+
+(defun prepare-form (form)
+  (%prepare-form form))

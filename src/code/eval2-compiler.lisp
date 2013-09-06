@@ -229,16 +229,7 @@
   (let ((args* (mapcar #'compile-form args)))
     `(%global-call ,f ,@args*)))
 
-(defun compile-form (form
-                     &optional (mode      *mode*)
-                     &aux      (*mode*    :execute)
-                               #+sbcl
-                               (sb!c::*current-path*
-                                (when (and (boundp 'sb!c::*source-paths*)
-                                           (or (sb!c::get-source-path form)
-                                               (boundp 'sb!c::*current-path*))
-                                           (sb!c::source-form-has-path-p form))
-                                  (sb!c::ensure-source-path form))))
+(defun %compile-form (form mode)
   (when (and (eq mode :compile-time-too)
              (not (and (consp form)
                        (or
@@ -277,7 +268,7 @@
          ;;(format t "(~&~S)" (first form))
          (case (first form)
            ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox
-             %checkargs %checkkeyargs)
+                     %checkargs %checkkeyargs)
             form)
            ((%varset)
             (destructuring-bind (var val) (rest form)
@@ -376,24 +367,24 @@
                                  (prevent-constant-modification var)
                                  (compile-form
                                   `(%varset ,var ,valform)))))))
-            ((flet labels)
-             (destructuring-bind (bindings &rest exprs) (rest form)
-               (with-parsed-body (body specials) exprs
-                 (declare (ignore specials))
-                 (let* ((function-names (mapcar #'first bindings))
-                        (body-context (context-add-env-lexicals
-                                       *context*
-                                       (mapcar #'(lambda (name)
-                                                   `(function ,name))
-                                               function-names)))
-                        (binding-context
-                          (if (eq 'flet (first form))
-                              (context-add-env-lexicals *context* '())
-                              body-context))
-                        (debug-info
-                          (make-debug-record body-context))
-                        (varnum
-                          (length bindings)))
+           ((flet labels)
+            (destructuring-bind (bindings &rest exprs) (rest form)
+              (with-parsed-body (body specials) exprs
+                (declare (ignore specials))
+                (let* ((function-names (mapcar #'first bindings))
+                       (body-context (context-add-env-lexicals
+                                      *context*
+                                      (mapcar #'(lambda (name)
+                                                  `(function ,name))
+                                              function-names)))
+                       (binding-context
+                         (if (eq 'flet (first form))
+                             (context-add-env-lexicals *context* '())
+                             body-context))
+                       (debug-info
+                         (make-debug-record body-context))
+                       (varnum
+                         (length bindings)))
                   `(%with-environment :indefinite-extent nil (,debug-info ,varnum)
                      ,@(loop for (name lambda-list . body) in bindings
                              for i from 0
@@ -404,7 +395,7 @@
                                                              :name name
                                                              :blockp t))))
                      ,(with-context body-context
-                         (compile-progn body)))))))
+                        (compile-progn body)))))))
             ((let)
              (compile-form `(%let (:none nil) () ,@(rest form))))
             ((let*)
@@ -478,7 +469,7 @@
                                                ,@(iter (rest remaining-bindings)))))))))))))))))
             ((load-time-value)
              (destructuring-bind (form) (rest form)
-              `(load-time-value ,(compile-form form))))
+               `(load-time-value ,(compile-form form))))
             ((locally)
              (destructuring-bind (&rest exprs) (rest form)
                (with-parsed-body (body specials) exprs

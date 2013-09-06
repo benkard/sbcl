@@ -1,8 +1,7 @@
 (in-package "SB!EVAL2")
 
 (defmacro declaim-optimizations ()
-  `(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0)
-                      (sb!c::store-closure-debug-pointer 3))))
+  `(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0))))
 
 (declaim-optimizations)
 
@@ -40,6 +39,7 @@
                               `(eval-closure ,kind)
                               'eval-closure)
                          ,lambda-list
+      (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)
     ,current-path
     ,source-loc))
@@ -135,3 +135,37 @@
 (declaim (inline fdefn-fun))
 (defun fdefn-fun (fdefn)
   (sb!c::fdefn-fun fdefn))
+
+
+(defvar *vcode-form-debug-info-mapping*
+  (make-hash-table :test 'eq :weakness :key))
+
+(defun (setf vcode-form-debug-info) (val form)
+  (setf (gethash form *vcode-form-debug-info-mapping*) val))
+
+(defun vcode-form-debug-info (form)
+  (gethash form *vcode-form-debug-info-mapping*))
+
+(defun attach-debug-info (form current-path)
+  (setf (vcode-form-debug-info form) current-path))
+
+(defun compile-form (form
+                     &optional (mode      *mode*)
+                     &aux      (*mode*    :execute)
+                               (sb!c::*current-path*
+                                (when (and (boundp 'sb!c::*source-paths*)
+                                           (or (sb!c::get-source-path form)
+                                               (boundp 'sb!c::*current-path*))
+                                           (sb!c::source-form-has-path-p form))
+                                  (sb!c::ensure-source-path form))))
+  (let ((compiled-form (%compile-form form mode)))
+    (when (and (current-path) (current-location))
+      (attach-debug-info compiled-form (cons (current-path) (current-location))))
+    compiled-form))
+
+(declaim (ftype (function (*) eval-closure) prepare-form))
+(defun prepare-form (vcode)
+  (let* ((eval-closure (%prepare-form vcode))
+         (path&location (vcode-form-debug-info vcode)))
+    (setf (source-path&location eval-closure) path&location)
+    eval-closure))

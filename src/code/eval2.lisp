@@ -181,8 +181,8 @@ children of CONTEXT can be stack-allocated."
           (let ((*envbox* envbox))
             (funcall body* env)))))))
 
-(declaim (ftype (function (*) eval-closure) prepare-form))
-(defun prepare-form (form)
+(declaim (ftype (function (*) eval-closure) %prepare-form))
+(defun %prepare-form (form)
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
   (values
    (cond
