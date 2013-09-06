@@ -216,11 +216,12 @@
 (defstruct (interpreted-debug-var
             (:include debug-var)
             (:constructor make-interpreted-debug-var
-                (symbol id level offset &aux (alive-p t)))
+                (symbol id level offset env &aux (alive-p t)))
             (:copier nil))
   (level nil :type fixnum)
   (offset nil :type fixnum)
-  (info nil))
+  (info nil)
+  (env nil))
 
 ;;;; frames
 
@@ -696,17 +697,26 @@
                     var
                     0
                     (sb!eval2::lexical-nesting lexical)
-                    (sb!eval2::lexical-offset lexical)))))
+                    (sb!eval2::lexical-offset lexical)
+                    env))))
           (coerce (mapcar #'make-debug-var vars) 'simple-vector))))))
 
 
-(defun interpreter-frame-environment (frame)
+(defun interpreted-call-frame-environment (frame)
   (let* ((debug-fun (frame-debug-fun frame))
          (env-var (first (debug-fun-symbol-vars debug-fun 'sb!eval2::envbox))))
     (and env-var
          (not (eq env-var :deleted))
          (ignore-errors
           (aref (access-compiled-debug-var-slot env-var frame))))))
+
+(defun interpreter-frame-environment (frame)
+  (let* ((debug-fun (frame-debug-fun frame))
+         (env-var (first (debug-fun-lambda-list debug-fun))))
+    (and env-var
+         (not (eq env-var :deleted))
+         (ignore-errors
+          (access-compiled-debug-var-slot env-var frame)))))
 
 
 (defun compute-interpreted-lambda-list (debug-vars lambda-list args)
@@ -848,25 +858,28 @@
         (let* ((debug-fun (frame-debug-fun frame))
                (closure (frame-closure-vars eval-closure-frame))
                (source-path (sb!eval2::source-path closure))
-               (env (interpreter-frame-environment frame))
-               (debug-info (and env (sb!eval2::environment-debug-record env)))
+               (call-env (interpreted-call-frame-environment frame))
+               (eval-env (interpreter-frame-environment eval-closure-frame))
+               (call-debug-info (and call-env (sb!eval2::environment-debug-record call-env)))
                (more-info (cdar (compiled-debug-fun-lambda-list (frame-debug-fun frame))))
                (more-context (debug-var-value (first more-info) frame))
                (more-count (debug-var-value (second more-info) frame))
                (args
                  (multiple-value-list (sb!c:%more-arg-values more-context more-count)))
-               (debug-vars
-                 (compute-interpreted-debug-vars env))
+               (call-debug-vars
+                 (compute-interpreted-debug-vars call-env))
+               (eval-debug-vars
+                 (compute-interpreted-debug-vars eval-env))
                (interpreted-debug-fun
                  (make-interpreted-debug-fun
                   :%lambda-list-gen (lambda ()
                                       (compute-interpreted-lambda-list
-                                       debug-vars
-                                       (sb!eval2::debug-record-lambda-list debug-info)
+                                       call-debug-vars
+                                       (sb!eval2::debug-record-lambda-list call-debug-info)
                                        args))
-                  :%debug-vars debug-vars
+                  :%debug-vars eval-debug-vars
                   :%function (frame-closure-vars frame)
-                  :%name (and debug-info (sb!eval2::debug-record-function-name debug-info))
+                  :%name (and call-debug-info (sb!eval2::debug-record-function-name call-debug-info))
                   :eval-closure closure))
                (code-location
                  (compute-interpreted-code-location interpreted-debug-fun
@@ -876,8 +889,8 @@
                          :code-locations (vector code-location)
                          :debug-fun debug-fun
                          :source-path source-path)))
-          (if (and debug-info
-                   (sb!eval2::debug-record-lambda-list debug-info))
+          (if (and call-debug-info
+                   (sb!eval2::debug-record-lambda-list call-debug-info))
               (let ((interpreted-frame
                       (make-interpreted-frame
                        up-frame
@@ -885,7 +898,7 @@
                        code-location
                        (frame-number frame)
                        frame
-                       env)))
+                       eval-env)))
                 interpreted-frame)
               frame)))))
 
@@ -2336,7 +2349,8 @@ register."
     (interpreted-debug-var (interpreted-debug-var-value debug-var frame))))
 
 (defun interpreted-debug-var-value (debug-var frame)
-  (sb!eval2::environment-value (interpreted-frame-env frame)
+  (declare (ignore frame))
+  (sb!eval2::environment-value (interpreted-debug-var-env debug-var)
                                (interpreted-debug-var-level debug-var)
                                (interpreted-debug-var-offset debug-var)))
 
