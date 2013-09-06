@@ -1243,7 +1243,7 @@
                 (vop setup-closure-environment node block start-label
                      closure-save)
                 (setf (ir2-physenv-closure-save-tn env) closure-save)
-                (physenv-live-tn closure-save (node-physenv node))))
+                (component-live-tn closure-save)))
             (vop setup-closure-environment node block start-label closure)
             (let ((n -1))
               (dolist (loc (ir2-physenv-closure env))
