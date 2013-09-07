@@ -115,7 +115,8 @@
 ;;; a closure, we strip off the closure and return the bare code. The
 ;;; second value is T if the argument was a function name. The third
 ;;; value is one of :COMPILED, :COMPILED-CLOSURE, :INTERPRETED,
-;;; :INTERPRETED-CLOSURE and :FUNCALLABLE-INSTANCE.
+;;; :INTERPRETED-CLOSURE, :MINIMALLY-COMPILED,
+;;; :MINIMALLY-COMPILED-CLOSURE, and :FUNCALLABLE-INSTANCE.
 (defun trace-fdefinition (x)
   (flet ((get-def ()
            (if (valid-function-name-p x)
@@ -141,6 +142,9 @@
         (values (sb-kernel:%closure-fun res)
                 named-p
                 :compiled-closure))
+       #!+sb-eval
+       (sb!eval2:minimally-compiled-function
+        (values res named-p :minimally-compiled-closure))
        (funcallable-instance
         (values res named-p :funcallable-instance))
        ;; FIXME: What about SB!EVAL:INTERPRETED-FUNCTION -- it gets picked off
@@ -370,18 +374,19 @@
         (untrace-1 fun))
       (let* ((debug-fun (sb-di:fun-debug-fun fun))
              (encapsulated
-              (if (eq (trace-info-encapsulated info) :default)
-                  (ecase kind
-                    (:compiled nil)
-                    (:compiled-closure
-                     (unless (functionp function-or-name)
-                       (warn "tracing shared code for ~S:~%  ~S"
-                             function-or-name
-                             fun))
-                     nil)
-                    ((:interpreted :interpreted-closure :funcallable-instance)
-                     t))
-                  (trace-info-encapsulated info)))
+               (if (eq (trace-info-encapsulated info) :default)
+                   (ecase kind
+                     (:compiled nil)
+                     (:compiled-closure
+                      (unless (functionp function-or-name)
+                        (warn "tracing shared code for ~S:~%  ~S"
+                              function-or-name
+                              fun))
+                      nil)
+                     ((:interpreted :interpreted-closure :funcallable-instance
+                                    :minimally-compiled :minimally-compiled-closure)
+                      t))
+                   (trace-info-encapsulated info)))
              (loc (if encapsulated
                       :encapsulated
                       (sb-di:debug-fun-start-location debug-fun)))
@@ -413,6 +418,12 @@
                     fun))
            (encapsulate function-or-name 'trace `(trace-call ',info)))
           (t
+           (when (member kind '(:minimally-compiled
+                                :minimally-compiled-closure))
+             ;; Trying to inject code into the shared function that
+             ;; underlies all mincfuns is a bad idea.
+             (error "can't trace minimally compiled function ~S without encapsulation"
+                    fun))
            (multiple-value-bind (start-fun cookie-fun)
                (trace-start-breakpoint-fun info)
              (let ((start (sb-di:make-breakpoint start-fun debug-fun
