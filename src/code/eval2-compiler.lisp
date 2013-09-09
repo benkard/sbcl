@@ -20,7 +20,17 @@
 ;;; track any context information (such as block tags, the names of
 ;;; lexical variables, etc.).
 ;;;
-;;; VM code forms are nested forms consisting of the following primitives:
+;;; VM code forms are nested forms consisting of a number of
+;;; primitives.  A list of the supported primitives follows.  We write
+;;; <foo> to indicate a literal argument, and define [[foo]] to mean
+;;; the result of the evaluation of the form foo.
+;;;
+;;;
+;;;   %argnum
+;;;
+;;;     In the dynamic context of a %LAMBDA, returns the number of
+;;;     arguments passed.
+;;;
 ;;;
 ;;;   (%varget <sym>)
 ;;;
