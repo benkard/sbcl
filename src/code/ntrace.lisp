@@ -142,8 +142,8 @@
         (values (sb-kernel:%closure-fun res)
                 named-p
                 :compiled-closure))
-       #!+sb-eval
-       (sb!eval2:minimally-compiled-function
+       #+sb-eval
+       (sb-eval2:minimally-compiled-function
         (values res named-p :minimally-compiled-closure))
        (funcallable-instance
         (values res named-p :funcallable-instance))
@@ -384,7 +384,7 @@
                               fun))
                       nil)
                      ((:interpreted :interpreted-closure :funcallable-instance
-                                    :minimally-compiled :minimally-compiled-closure)
+                       :minimally-compiled :minimally-compiled-closure)
                       t))
                    (trace-info-encapsulated info)))
              (loc (if encapsulated
