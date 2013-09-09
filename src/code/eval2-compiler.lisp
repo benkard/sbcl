@@ -14,7 +14,7 @@
 ;;; VM code is a fully macroexpanded, simplified form of Lisp code
 ;;; that lacks lexical binding forms, TAGBODY/GO, BLOCK/RETURN-FROM,
 ;;; macros, and symbol macros.  To implement lexical binding forms, it
-;;; manages environment objects explicitly.  VM code is designed to be
+;;; manages the environment explicitly.  VM code is designed to be
 ;;; interpretable using only immediately local information + an
 ;;; environment object, such that the interpreter does not need to
 ;;; track any context information (such as block tags, the names of
