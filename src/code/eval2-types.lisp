@@ -1,15 +1,13 @@
 (in-package "SB!EVAL2")
 
-#+sbcl
-(declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)
-                   (sb!c::store-closure-debug-pointer 0)))
+(declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
 
 (deftype eval-closure () `(function (environment) *))
 
 (defstruct (debug-record (:constructor
                              make-debug-record
                              (context &optional (lambda-list :none) function-name))
-                         #-(or)   ;for debugging purposes
+                         #+(or)   ;for debugging purposes
                          (:print-function (lambda (object stream foo)
                                             (declare (ignore object foo))
                                             (format stream "#<DEBUG-RECORD>"))))
@@ -17,9 +15,6 @@
   (lambda-list nil :type (or list (member :none)))
   (function-name nil))
 
-#+(or)
-(deftype environment ()
-  `(simple-vector 3))
 
 (declaim (inline %make-environment
                  environment-debug-record
@@ -27,9 +22,7 @@
                  environment-data))
 (defstruct (environment (:constructor
                             %make-environment
-                            (debug-record parent data))
-                        ;;(:type vector)
-                        )
+                            (debug-record parent data)))
   (debug-record nil :type (or null debug-record))
   (parent nil :type (or null environment))
   (data nil :type simple-vector))
@@ -63,8 +56,6 @@
 (defstruct (context (:constructor make-context (&optional parent)))
   parent
   (env-hop nil :type boolean)
-  (block-tags nil :type list)
-  (go-tags nil :type list)
   (symbol-macros nil :type list)
   (macros nil :type list)
   (lexicals nil :type list)
@@ -97,27 +88,9 @@
     (or (context-%evaluation-context context)
         (and parent (context-evaluation-context parent))
         (make-null-context))))
-(defun context-add-block-tag (context block tag)
-  (let ((new-context (make-context context)))
-    (push (cons block tag) (context-block-tags new-context))
-    new-context))
-(defun context-block-tag (context block)
-  (let ((parent (context-parent context)))
-    (or (cdr (assoc (the symbol block) (context-block-tags context)))
-        (and parent (context-block-tag parent block)))))
-(defun context-add-go-tags (context new-go-tags catch-tag)
-  (let ((new-context (make-context context)))
-    (dolist (new-go-tag new-go-tags)
-      (push (cons new-go-tag catch-tag)
-            (context-go-tags new-context)))
-    new-context))
 (defun context-collect (context f)
   (let ((parent (context-parent context)))
     (append (funcall f context) (and parent (context-collect parent f)))))
-(defun context-find-go-tag (context go-tag)
-  (let ((parent (context-parent context)))
-    (or (cdr (assoc (the atom go-tag) (context-go-tags context)))
-        (and parent (context-find-go-tag parent go-tag)))))
 (defun context-find-symbol-macro (context symmac)
   (let ((parent (context-parent context)))
     (and (not (member symmac
