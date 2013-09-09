@@ -16,6 +16,18 @@
   (function-name nil))
 
 
+;;;; ENVIRONMENTS
+;;;
+;;; Environments are the things that evaluated code passes around at
+;;; runtime to track variable bindings.  The design is a conventional
+;;; linked style where every environment has a link to its parent
+;;; environment.  In order to access a binding in an ancestral
+;;; environment, the chain of environments must be traversed.
+;;; Variables are represented as cells in a SIMPLE-VECTOR.  The
+;;; information mapping variable names to vector cells/parent hop
+;;; counts is compile-time-only (see the CONTEXT structure below),
+;;; since the compiler translates variable accesses into instructions
+;;; of the form (%envref <hopcount> <vector-index>).
 (declaim (inline %make-environment
                  environment-debug-record
                  environment-parent
@@ -41,6 +53,11 @@
                                    (make-array (list size)))))
   (%make-environment debug-record parent data))
 
+
+;;;; CONTEXTS
+;;;
+;;; A LEXICAL is a compile-time record containing information on how
+;;; to access the variable named by a given NAME.
 (defstruct lexical
   (name    nil :type (or symbol list))
   (offset  nil :type fixnum)
@@ -53,17 +70,41 @@
   (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
 
 
+;;; The CONTEXT structure contains all information tracked by the
+;;; compiler during syntactical analysis.  Contexts are built up at
+;;; compile-time as environments are built up at runtime.  They are
+;;; also linked hierarchically, so the compiler needs to hop through
+;;; the ancestor chain to collect all variables/go-labels/catch-tags,
+;;; etc.
 (defstruct (context (:constructor make-context (&optional parent)))
+  ;; The parent context.  All information in the parent context is
+  ;; also relevant for this context except for things that are
+  ;; overridden by new information.
   parent
+  ;; Does this context correspond to a new ENVIRONMENT being created
+  ;; at runtime?  If so, this means runtime code needs to hop one
+  ;; level farther than before to access existing variable bindings.
   (env-hop nil :type boolean)
+  ;; A list of (NAME . FORM) pairs.
   (symbol-macros nil :type list)
+  ;; A list of (NAME . FUNCTION) pairs.
   (macros nil :type list)
+  ;; A list of LEXICALs corresponding to the variables newly bound in
+  ;; this context.  If this is non-null, ENV-HOP must be true.
   (lexicals nil :type list)
+  ;; A list of variables locally declared SPECIAL in this context.
   (specials nil :type list)
+  ;; The environment for COMPILER-LET, accessible from locally defined
+  ;; macros.
   (%evaluation-environment nil :type (or null environment))
+  ;; The context corresponding to the %EVALUATION-ENVIRONMENT, used
+  ;; for compiling locally defined macros.
   (%evaluation-context nil :type (or null context)))
+
 (defun make-null-context ()
   (make-context nil))
+
+;;;; CONTEXT accessors
 (defun context-evaluation-environment (context)
   (let ((parent (context-parent context)))
     (or (context-%evaluation-environment context)
@@ -184,6 +225,8 @@
 (defun local-function-p (context f)
   (context-find-function context f))
 
+
+;;;; ENVIRONMENT accessors
 (declaim (inline environment-value))
 (defun environment-value (env nesting offset)
   (dotimes (i (the fixnum nesting))
