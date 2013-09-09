@@ -107,7 +107,7 @@
 ;;;     <positional-num>.
 ;;;
 ;;;
-;;;   (%fdef-ref <function-name>
+;;;   (%fdef-ref <function-name>)
 ;;;
 ;;;     Access (FDEFINITION FUNCTION-NAME).
 ;;;
