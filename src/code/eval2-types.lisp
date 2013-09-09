@@ -202,7 +202,7 @@
           do (incf env-level)
         do (setq context (context-parent context))))
 (defun context-find-lexical (context var)
-  (find var (context-collect-lexicals context) :key #'lexical-name))
+  (find var (context-collect-lexicals context) :key #'lexical-name :test #'equal))
 (declaim (ftype (function (context (or symbol list)) *) context-find-function))
 (defun context-find-function (context f)
   (context-find-lexical context `(function ,f)))
