@@ -2,8 +2,22 @@
 
 (declaim (optimize (debug 0) (space 0) (speed 3) (safety 0) (compilation-speed 0)))
 
+
+;;;; EVAL-CLOSUREs
+;;;
+;;; An eval-closure is a function corresponding to a compiled form
+;;; which, when evaluated, acts as if interpreting the form in the
+;;; supplied environment, and returns the result.
 (deftype eval-closure () `(function (environment) *))
 
+
+;;;; DEBUG RECORDS
+;;;
+;;; Debug records store information interesting to the debugger.  They
+;;; are linked from environments, which can be accessed by the
+;;; debugger through various means (in the case of SBCL, this is
+;;; primarily through access through the DEBUG-VAR corresponding to
+;;; the first argument of the EVAL-CLOSURE.)
 (defstruct (debug-record (:constructor
                              make-debug-record
                              (context &optional (lambda-list :none) function-name))

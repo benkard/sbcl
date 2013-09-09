@@ -1,38 +1,164 @@
 (in-package "SB!EVAL2")
 
-#+(or)
-'(;; these can be represented as Lisp code!
-  (%var-ref sym)
-  (%var-set sym ...)
-  (%envref nesting offset)
-  (%envset nesting offset ...)
-  ;; these are primitives
-  (%fdef-ref sym)
-  (%local-call nesting offset ...)
-  (%global-call sym ...)
-  ;;
-  (%mvb) ;--> multiple-value-list --> dolist
-  ;;
-  (%eval-when <times> ...)
-  ;;
-  (%lambda lambda-list ...)
-  ;;
-  ;;nil
-  ;;!!punt to (setf values)!! (%mvsetq)
-  ;;(%if r0 ... ...)
-  ;;(%catch r0 ...)
-  ;;(%block name ...)
-  ;;(%load-time-value ...)
-  ;;(%mvcall ...)
-  ;;???(%mvprog1 ... ...)
-  ;;(%quote ...)
-  ;;(%progv r0 r1 ...)
-  ;;(%return-from name r0)
-  ;;(%throw r0 r1)
-  ;;(%unwind-protect ... ...)
-  ;;(%go ...)
-  ;;(%tagbody ...)
-  )
+;;;; THE COMPILER
+;;;
+;;; The eval2 compiler (more precisely, the COMPILE-FORM function)
+;;; takes a Lisp form and a lexical context consisting of compile-time
+;;; information (such as lexical variable information and
+;;; declarations), and returns a corresponding form in VM code to be
+;;; processed further by the PREPARE-FORM function in eval2.lisp.
+;;;
+;;; The lexical context is passed through the special variable
+;;; *CONTEXT*.
+;;;
+;;; VM code is a fully macroexpanded, simplified form of Lisp code
+;;; that lacks lexical binding forms, TAGBODY/GO, BLOCK/RETURN-FROM,
+;;; macros, and symbol macros.  To implement lexical binding forms, it
+;;; manages environment objects explicitly.  VM code is designed to be
+;;; interpretable using only immediately local information + an
+;;; environment object, such that the interpreter does not need to
+;;; track any context information (such as block tags, the names of
+;;; lexical variables, etc.).
+;;;
+;;; VM code forms are nested forms consisting of the following primitives:
+;;;
+;;;   (%varget <sym>)
+;;;
+;;;     Read the SYMBOL-VALUE of a special variable.
+;;;
+;;;
+;;;   (%varset <sym> valform)
+;;;
+;;;     Set the SYMBOL-VALUE of SYM to the result of [[valform]].
+;;;
+;;;
+;;;   (%varpush <sym> valform)
+;;;
+;;;     PUSH [[valform]] onto (SYMBOL-VALUE <sym>).
+;;;     This is basically a performance hack we use in the compiler.
+;;;
+;;;
+;;;   (%envget <nesting> <offset>)
+;;;
+;;;     Get the value of the lexical variable at <nesting>/<offset> in
+;;;     the environment.
+;;;
+;;;
+;;;   (%envset <nesting> <offset> valform)
+;;;
+;;;     Set the value of the lexical variable at <nesting>/<offset> in
+;;;     the environment to [[valform]].
+;;;
+;;;
+;;;   (%with-environment <extent> <set-box-p> <debug-info> . body)
+;;;
+;;;     Set up a new lexical environment and evaluate BODY within it.
+;;;     <extent> is one of :DYNAMIC and :INDEFINITE, indicating
+;;;     whether the environment may be stack- allocated.  <set-box-p>
+;;;     is a boolean indicating whether the environment corresponds to
+;;;     a lambda.  In this case, *ENVBOX* is to be set to point to the
+;;;     new environment, which is used by the debbuger to access
+;;;     function call information.
+;;;
+;;;
+;;;   (%getarg <i>)
+;;;
+;;;     In the dynamic context of a %LAMBDA, fetch the I'h argument.
+;;;
+;;;
+;;;   (%fetchargs <n>)
+;;;
+;;;     In the dynamic context of a %LAMBDA, fetch the first N
+;;;     arguments and put them into the first N lexical variable slots
+;;;     in the currently active environment.
+;;;
+;;;     This is a major optimization in the common case of setting up
+;;;     a bunch of non-optional positional arguments as lexical
+;;;     variables.
+;;;
+;;;
+;;;   (%arglistfrom <n>)
+;;;
+;;;     In the dynamic context of a %LAMBDA, get a LIST of arguments,
+;;;     skipping the first N variables.
+;;;
+;;;
+;;;   (%checkargs <min> [<max>])
+;;;
+;;;     In the dynamic context of a %LAMBDA, check that the number of
+;;;     arguments is (>= MIN) and (<= MAX).
+;;;
+;;;
+;;;   (%checkkeyargs <positional-num>)
+;;;
+;;;     In the dynamic context of a %LAMBDA, check that the number of
+;;;     keyword arguments is even, given the number of expected
+;;;     positional arguments (required + optional) as
+;;;     <positional-num>.
+;;;
+;;;
+;;;   (%fdef-ref <function-name>
+;;;
+;;;     Access (FDEFINITION FUNCTION-NAME).
+;;;
+;;;
+;;;   (%local-call <nesting> <offset> . args)
+;;;
+;;;     Call the local function stored in the environment at
+;;;     <nesting>/<offset> with the arguments [[args]].
+;;;
+;;;
+;;;   (%tagbody <catch-tag> . blocks)
+;;;
+;;;     Set up a loop that successively proceeds through the BLOCKS
+;;;     (which are implicit progns of VM code) and either:
+;;;
+;;;       1. catches an integer N under the <catch-tag>, in which case
+;;;          it jumps to block #N and proceeds from there, or
+;;;
+;;;       2. falls through the last block, in which case it terminates
+;;;          and returns NIL.
+;;;
+;;;
+;;;   (%lambda (<name> <current-path> <source-info> <lambda-list> <doc>) . body)
+;;;
+;;;     Create a funcallable MINIMALLY-COMPILED-FUNCTION that executes
+;;;     BODY in an implicit progn and returns the result.  The options
+;;;     given in the first argument to %LAMBDA are associated with the
+;;;     MINIMALLY-COMPILED-FUNCTION for access by the debugger or
+;;;     other facilities.
+;;;
+;;;
+;;;   (load-time-value form)
+;;;
+;;;     Evaluate FORM at load-time (i.e., during the execution of
+;;;     PREPARE-FORM) and return the result.
+;;;
+;;;
+;;;   (%with-binding <var> val . body)
+;;;
+;;;     Set up a dynamic binding for [[val]] at the symbol <var> and
+;;;     execute BODY in an implicit progn, returning its results.
+;;;
+;;;     This is effectively a special case of PROGV for a single
+;;;     variable determined at compile-time.
+;;;
+;;;
+;;;  In addition, the following Common Lisp forms are valid VM forms.
+;;;  They are equivalent to their Common Lisp counterparts.
+;;;
+;;;   (catch tag . body)
+;;;   (if a b c)
+;;;   (multiple-value-call f . args)
+;;;   (multiple-value-prog1 values-form . body)
+;;;   (progn . body)
+;;;   (progv vals vars . body)
+;;;   (quote <object>)
+;;;   (the <type> valform)
+;;;   (throw tag thing)
+;;;   (unwind-protect protected body)
+;;;
+
 
 (defun compile-nil ()
   ''nil)
