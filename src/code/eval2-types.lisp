@@ -76,6 +76,10 @@
 ;;; also linked hierarchically, so the compiler needs to hop through
 ;;; the ancestor chain to collect all variables/go-labels/catch-tags,
 ;;; etc.
+;;;
+;;; Note: We treat local functions as variables with a name of
+;;; `(FUNCTION ,function-name).  (In theory, this can be used to
+;;; dynamically bind local functions.)
 (defstruct (context (:constructor make-context (&optional parent)))
   ;; The parent context.  All information in the parent context is
   ;; also relevant for this context except for things that are
@@ -103,8 +107,16 @@
 
 (defun make-null-context ()
   (make-context nil))
+(defun make-lexical-context (context)
+  (let ((new-context (make-context context)))
+    (setf (context-env-hop new-context) t)
+    new-context))
 
 ;;;; CONTEXT accessors
+;;;
+;;; Most of the functions that augment a context return a new context
+;;; with the existing one as the parent.  Exceptions are marked with a
+;;; ! in the name (such as CONTEXT-ADD-SPECIAL!).
 (defun context-evaluation-environment (context)
   (let ((parent (context-parent context)))
     (or (context-%evaluation-environment context)
@@ -129,10 +141,8 @@
     (or (context-%evaluation-context context)
         (and parent (context-evaluation-context parent))
         (make-null-context))))
-(defun context-collect (context f)
-  (let ((parent (context-parent context)))
-    (append (funcall f context) (and parent (context-collect parent f)))))
 (defun context-find-symbol-macro (context symmac)
+  "If a symbol macro called SYMMAC exists in CONTEXT, return a singleton list of its expansion, otherwise return NIL."
   (let ((parent (context-parent context)))
     (and (not (member symmac
                       (context-lexicals context)
@@ -143,6 +153,7 @@
                (and record? (list (cdr record?))))
              (and parent (context-find-symbol-macro parent symmac))))))
 (defun context-find-macro (context mac)
+  "If a macro called MAC exists in CONTEXT, return a singleton list of its expander function, otherwise return NIL."
   (let ((parent (context-parent context)))
     (and (not (member `(function ,mac)
                       (context-lexicals context)
@@ -181,17 +192,13 @@
            (and (context-parent context)
                 (context-var-special-p (context-parent context) var)))))
 (defun context-add-env-lexicals (context vars)
-  ;; open a new variable context
+  ;; Open a new variable context, set env-hop to true.
   (let ((new-context (make-context context)))
     (setf (context-env-hop new-context) t)
     (setf (context-lexicals new-context)
           (loop for i fixnum from 0
                 for v in vars
                 collect (make-env-lexical v i)))
-    new-context))
-(defun make-lexical-context (context)
-  (let ((new-context (make-context context)))
-    (setf (context-env-hop new-context) t)
     new-context))
 (defun context-add-env-lexical! (context var)
   (push (make-env-lexical var (length (context-lexicals context)))
@@ -206,7 +213,19 @@
   (values))
 (defun context-add-env-functions (context fs)
   (context-add-env-lexicals context (mapcar (lambda (x) `(function ,x)) fs)))
+(defun context-collect (context f)
+  "Walk the ancestor chain of CONTEXT and return all F of the contexts, appended together.
+
+This is effectively a MAPCAN on the ancestor chain of CONTEXT."
+  (let ((parent (context-parent context)))
+    (append (funcall f context) (and parent (context-collect parent f)))))
 (defun context-collect-lexicals (context)
+  "Find all LEXICALs bound in CONTEXT and all of its ancestors."
+  ;; In order to make the returned information correct, we need to
+  ;; augment the LEXICALs with the appropriate nesting/environment hop
+  ;; count.  We do this by incrementing a counter each time we
+  ;; encounter a context corresponding to a lexical environment,
+  ;; indicated by the ENV-HOP flag.
   (loop with env-level = 0
         until (null context)
         for records = (context-lexicals context)
