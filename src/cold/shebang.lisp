@@ -70,7 +70,7 @@
 ;;; will not be easy.
 (defun checked-feature-in-features-list-p (feature list)
   (etypecase feature
-    (symbol (unless (member feature '(:sbcl :ansi-cl :common-lisp :ieee-floating-point))
+    (symbol (unless (member feature '(:ansi-cl :common-lisp :ieee-floating-point))
               (when (member feature *shebang-features* :test #'eq)
                 (error "probable XC bug in host read-time conditional")))
             (member feature list :test #'eq))
