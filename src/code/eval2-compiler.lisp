@@ -118,6 +118,12 @@
 ;;;     <nesting>/<offset> with the arguments [[args]].
 ;;;
 ;;;
+;;;   (%global-call <function-name> . args)
+;;;
+;;;     Call the global function designated by <function-name> with
+;;;     the arguments [[args]].
+;;;
+;;;
 ;;;   (%tagbody <catch-tag> . blocks)
 ;;;
 ;;;     Set up a loop that successively proceeds through the BLOCKS
