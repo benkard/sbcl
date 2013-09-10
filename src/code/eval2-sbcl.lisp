@@ -5,6 +5,18 @@
 
 (declaim-optimizations)
 
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *impl-compiler-let-syms* '())
+  (defvar *impl-named-lambda-syms* '(sb!int:named-lambda))
+  (defvar *impl-named-function-syms* '())
+  (defvar *impl-the-syms* '(sb!ext:truly-the)))
+
+
+(defun verify-function-name (thing)
+  (assert (sb!int:valid-function-name-p thing)))
+
+
 (defvar *dump-info* nil)
 (defvar *set-info* nil)
 (defvar *source-paths&locations* (make-hash-table :weakness :key

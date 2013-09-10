@@ -265,18 +265,7 @@
         (setq rest (or rest (gensym "REST")))
         (let* ((required-num (length required))
                (optional-num (length optional))
-               (varspecs (list))
-               #+(or)
-               (default-values (append (mapcar #'lambda-binding-default optional)
-                                       (mapcar #'lambda-binding-default keys)
-                                       (mapcar #'lambda-binding-default aux)))
-               #+(or)
-               (varnum 0)
-               #+(or)
-               (envp (or (> varnum +stack-max+)
-                         (maybe-closes-p *context* `(progn ,@body))
-                         (some (lambda (x) (maybe-closes-p *context* x))
-                               default-values))))
+               (varspecs (list)))
           (setq varspecs (nreverse varspecs))
           (let* ((i 0))
             `(%lambda (,name ,(current-path) ,(current-location) ,lambda-list nil)
@@ -445,12 +434,10 @@
                  (case (first fun-form)
                    ((lambda)
                     (compile-lambda (rest fun-form)))
-                   #+sbcl
-                   ((sb!int:named-lambda)
+                   (#.*impl-named-lambda-syms*
                     (compile-lambda (cddr fun-form) :name (cadr fun-form)))
                    (t
-                    #+sbcl (assert (sb!int:valid-function-name-p fun-form))
-                    #+ccl  (assert (ccl::valid-function-name-p fun-form))
+                    (verify-function-name)
                     (compile-function-ref fun-form)))))))
            ((lambda)
             (compile-lambda (rest form)))
@@ -549,9 +536,6 @@
                                                bindings))
                         (vars (mapcar #'car real-bindings))
                         (varnum (length vars))
-                        #+(or)
-                        (envp (or (> varnum +stack-max+)
-                                  (maybe-closes-p *context* `(progn ,@body))))
                         (binding-context
                           (context-add-env-lexicals *context* (list)))
                         (body-context
@@ -628,11 +612,9 @@
                        ,values-form))))))
             ((quote)
              form)
-            #+sbcl
-            ((sb!int:named-lambda)
+            (#.*impl-named-lambda-syms*
              (compile-lambda (cddr form) :name (cadr form)))
-            #+ccl
-            ((ccl:nfunction)
+            (#.*impl-named-function-syms*
              (compile-lambda (cdaddr form) :name (cadr form)))
             ((symbol-macrolet)
              (destructuring-bind (bindings &rest exprs) (rest form)
@@ -673,7 +655,7 @@
                                   (context-add-macros *context* bindings)
                                   specials)
                      (compile-progn body mode))))))
-            ((compiler-let #+ccl ccl:compiler-let #+(or) sb-cltl2:compiler-let)
+            (#.`(compiler-let ,@*impl-compiler-let-syms*)
              (destructuring-bind (bindings &rest body) (rest form)
                (with-context (context-add-evaluation-bindings
                               *context*
@@ -691,7 +673,7 @@
             ((catch unwind-protect multiple-value-prog1 multiple-value-call progv
               throw)
              `(,(first form) ,@(mapcar #'compile-form (rest form))))
-            ((the #+sbcl sb!ext:truly-the)
+            ((the #!+sbcl sb!ext:truly-the)
              (compile-form (third form)))
             ((progn)
              (compile-progn (rest form) mode))

@@ -3,6 +3,18 @@
 (defmacro declaim-optimizations ()
   `(declaim (optimize (debug 2) (space 2) (speed 2) (safety 0) (compilation-speed 0))))
 
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *impl-compiler-let-syms* '())
+  (defvar *impl-named-lambda-syms* '())
+  (defvar *impl-named-function-syms* '())
+  (defvar *impl-the-syms* '()))
+
+
+(defun verify-function-name (thing)
+  (declare (ignore thing)))
+
+
 (defmacro eval-lambda ((&optional kind current-path source-loc) &body body)
   (declare (ignore kind current-path source-loc))
   `(lambda () ,@body))
