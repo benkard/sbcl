@@ -7,7 +7,6 @@
 (defun call-with-environment (env thunk)
   (funcall thunk env))
 
-;;(declaim (inline call-with-context))
 (declaim (ftype (function (context function) *) call-with-context))
 (defun call-with-context (context thunk)
   (let ((*context* context))
@@ -128,13 +127,6 @@ children of CONTEXT can be stack-allocated."
                  (map 'list
                       (lambda (x) (funcall (the eval-closure x) env))
                       args*))))))
-
-(declaim (ftype (function (eval-closure list) eval-closure) prepare-direct-call))
-(defun prepare-direct-call (f args)
-  (let ((args* (mapcar (lambda (form) (prepare-form form)) args)))
-    (eval-lambda (env) (%direct-call)
-      (apply (the (or symbol function) (funcall (the eval-closure f) env))
-             (mapcar (lambda (x) (funcall (the eval-closure x) env)) args*)))))
 
 (declaim (ftype (function (list)
                           (values eval-closure &rest nil))

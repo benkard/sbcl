@@ -1,4 +1,4 @@
-(in-package #+sbcl "SB!EVAL2" #-sbcl "SB-EVAL2")
+(in-package "SB!EVAL2")
 
 ;; These definitions of BLOCK/RETURN-FROM/RETURN and TAGBODY/GO have
 ;; been taken from Toilet Lisp.

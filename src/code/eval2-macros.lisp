@@ -45,12 +45,6 @@
                 `((,x) ,(cl:eval `(let ((,var ,x)) ,@body))))))
 
 
-(defmacro incff (x &optional (num 1))
-  (let ((old-x (gensym)))
-    `(let ((,old-x ,x))
-       (incf ,x ,num)
-       ,old-x)))
-
 (defmacro nlet (loop-var bindings &body body)
   `(labels ((,loop-var ,(mapcar #'first bindings)
               ,@body))
