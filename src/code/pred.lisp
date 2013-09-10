@@ -85,7 +85,10 @@
   (def-type-predicate-wrapper array-header-p)
   (def-type-predicate-wrapper arrayp)
   (def-type-predicate-wrapper atom)
-  (def-type-predicate-wrapper base-char-p)
+  ;; Testing for BASE-CHAR-P is usually redundant on #-sb-unicode,
+  ;; remove it there completely so that #-sb-unicode build will
+  ;; break when it's used.
+  #!+sb-unicode (def-type-predicate-wrapper base-char-p)
   (def-type-predicate-wrapper base-string-p)
   #!+sb-unicode (def-type-predicate-wrapper character-string-p)
   (def-type-predicate-wrapper bignump)
@@ -243,16 +246,18 @@
 
 (defun bit-vector-= (x y)
   (declare (type bit-vector x y))
-  (if (and (simple-bit-vector-p x)
-           (simple-bit-vector-p y))
-      (bit-vector-= x y) ; DEFTRANSFORM
-      (and (= (length x) (length y))
-           (do ((i 0 (1+ i))
-                (length (length x)))
-               ((= i length) t)
-             (declare (fixnum i))
-             (unless (= (bit x i) (bit y i))
-               (return nil))))))
+  (cond ((eq x y))
+        ((and (simple-bit-vector-p x)
+              (simple-bit-vector-p y))
+         (bit-vector-= x y))            ; DEFTRANSFORM
+        (t
+         (and (= (length x) (length y))
+              (do ((i 0 (1+ i))
+                   (length (length x)))
+                  ((= i length) t)
+                (declare (fixnum i))
+                (unless (= (bit x i) (bit y i))
+                  (return nil)))))))
 
 (defun equal (x y)
   #!+sb-doc

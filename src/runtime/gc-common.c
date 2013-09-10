@@ -121,12 +121,8 @@ scavenge(lispobj *start, sword_t n_words)
 {
     lispobj *end = start + n_words;
     lispobj *object_ptr;
-    sword_t n_words_scavenged;
 
-    for (object_ptr = start;
-         object_ptr < end;
-         object_ptr += n_words_scavenged) {
-
+    for (object_ptr = start; object_ptr < end;) {
         lispobj object = *object_ptr;
 #ifdef LISP_FEATURE_GENCGC
         if (forwarding_pointer_p(object_ptr))
@@ -141,16 +137,16 @@ scavenge(lispobj *start, sword_t n_words)
                 if (forwarding_pointer_p(ptr)) {
                     /* Yes, there's a forwarding pointer. */
                     *object_ptr = LOW_WORD(forwarding_pointer_value(ptr));
-                    n_words_scavenged = 1;
+                    object_ptr++;
                 } else {
                     /* Scavenge that pointer. */
-                    n_words_scavenged =
+                    object_ptr +=
                         (scavtab[widetag_of(object)])(object_ptr, object);
                 }
             } else {
                 /* It points somewhere other than oldspace. Leave it
                  * alone. */
-                n_words_scavenged = 1;
+                object_ptr++;
             }
         }
 #if !defined(LISP_FEATURE_X86) && !defined(LISP_FEATURE_X86_64)
@@ -166,7 +162,6 @@ scavenge(lispobj *start, sword_t n_words)
                checking a single word and it's anything other than a
                pointer, just hush it up */
             int widetag = widetag_of(object);
-            n_words_scavenged = 1;
 
             if ((scavtab[widetag] == scav_lose) ||
                 (((sizetab[widetag])(object_ptr)) > 1)) {
@@ -176,15 +171,15 @@ If you can reproduce this warning, please send a bug report\n\
 (see manual page for details).\n",
                         object, object_ptr);
             }
+            object_ptr++;
         }
 #endif
         else if (fixnump(object)) {
             /* It's a fixnum: really easy.. */
-            n_words_scavenged = 1;
+            object_ptr++;
         } else {
             /* It's some sort of header object or another. */
-            n_words_scavenged =
-                (scavtab[widetag_of(object)])(object_ptr, object);
+            object_ptr += (scavtab[widetag_of(object)])(object_ptr, object);
         }
     }
     gc_assert_verbose(object_ptr == end, "Final object pointer %p, start %p, end %p\n",
@@ -1695,7 +1690,6 @@ sword_t
 scav_vector (lispobj *where, lispobj object)
 {
     uword_t kv_length;
-    lispobj *kv_vector;
     struct hash_table *hash_table;
 
     /* SB-VM:VECTOR-VALID-HASHING-SUBTYPE is set for EQ-based and weak
@@ -1705,7 +1699,6 @@ scav_vector (lispobj *where, lispobj object)
         return 1;
 
     kv_length = fixnum_value(where[1]);
-    kv_vector = where + 2;  /* Skip the header and length. */
     /*FSHOW((stderr,"/kv_length = %d\n", kv_length));*/
 
     /* Scavenge element 0, which may be a hash-table structure. */

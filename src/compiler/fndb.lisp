@@ -91,7 +91,7 @@
 (defknown classoid-of (t) classoid (flushable))
 (defknown layout-of (t) layout (flushable))
 (defknown copy-structure (structure-object) structure-object
-  (flushable))
+  (flushable)) ;; FIXME: can derive the type based on the structure
 
 ;;;; from the "Control Structure" chapter:
 
@@ -115,10 +115,14 @@
   :derive-type #'result-type-last-arg)
 (defknown fdefinition ((or symbol cons)) function (explicit-check))
 (defknown %set-fdefinition ((or symbol cons) function) function
-  (explicit-check))
-(defknown makunbound (symbol) symbol)
+  (explicit-check)
+  :derive-type #'result-type-last-arg)
+(defknown makunbound (symbol) symbol
+  ()
+  :derive-type #'result-type-first-arg)
 (defknown fmakunbound ((or symbol cons)) (or symbol cons)
-  (explicit-check))
+  (explicit-check)
+  :derive-type #'result-type-first-arg)
 (defknown apply (callable t &rest t) *) ; ### Last arg must be List...
 (defknown funcall (callable &rest t) *)
 
@@ -418,6 +422,18 @@
                  char-lessp char-greaterp char-not-greaterp char-not-lessp)
   (character &rest character) boolean (movable foldable flushable))
 
+(defknown (two-arg-char-equal
+           two-arg-char-not-equal
+           two-arg-char-lessp
+           two-arg-char-not-lessp
+           two-arg-char-greaterp
+           two-arg-char-not-greaterp)
+    (character character) boolean (movable foldable flushable))
+
+(defknown char-equal-constant (character character character)
+  boolean
+  (movable foldable flushable explicit-check))
+
 (defknown character (t) character (movable foldable unsafely-flushable))
 (defknown char-code (character) char-code (movable foldable flushable))
 (defknown (char-upcase char-downcase) (character) character
@@ -654,7 +670,6 @@
   :derive-type (creation-result-type-specifier-nth-arg 1)
   :destroyed-constant-args (nth-constant-nonempty-sequence-args 2 3))
 
-;;; not FLUSHABLE, despite what CMU CL's DEFKNOWN said..
 (defknown read-sequence (sequence stream
                                   &key
                                   (:start index)
@@ -668,7 +683,7 @@
                                    (:end sequence-end))
   sequence
   ()
-  :derive-type (sequence-result-nth-arg 1))
+  :derive-type #'result-type-first-arg)
 
 ;;;; from the "Manipulating List Structure" chapter:
 (defknown (car cdr first rest)
@@ -742,7 +757,7 @@
   :destroyed-constant-args (nth-constant-nonempty-sequence-args 1))
 
 (defknown ldiff (list t) list (flushable))
-(defknown (rplaca rplacd) (cons t) list ()
+(defknown (rplaca rplacd) (cons t) cons ()
   :destroyed-constant-args (nth-constant-args 1))
 
 (defknown subst (t t t &key (:key callable) (:test callable)
@@ -779,7 +794,7 @@
 
 (defknown adjoin (t list &key (:key callable) (:test callable)
                     (:test-not callable))
-  list (foldable flushable call))
+  cons (foldable flushable call))
 
 (defknown (union intersection set-difference set-exclusive-or)
   (list list &key (:key callable) (:test callable) (:test-not callable))
@@ -797,7 +812,7 @@
   boolean
   (foldable flushable call))
 
-(defknown acons (t t t) list (movable flushable))
+(defknown acons (t t t) cons (movable flushable))
 (defknown pairlis (t t &optional t) list (flushable))
 
 (defknown (rassoc assoc)
@@ -829,7 +844,8 @@
 (defknown sb!impl::gethash3 (t hash-table t) (values t boolean)
   (flushable)) ; not FOLDABLE, since hash table contents can change
 (defknown %puthash (t hash-table t) t ()
-  :destroyed-constant-args (nth-constant-args 2))
+  :destroyed-constant-args (nth-constant-args 2)
+  :derive-type #'result-type-last-arg)
 (defknown remhash (t hash-table) boolean ()
   :destroyed-constant-args (nth-constant-args 2))
 (defknown maphash (callable hash-table) null (flushable call))
@@ -844,6 +860,7 @@
 (defknown hash-table-test (hash-table) symbol (foldable flushable))
 (defknown sxhash (t) hash (#-sb-xc-host foldable flushable))
 (defknown psxhash (t &optional t) hash (#-sb-xc-host foldable flushable))
+(defknown hash-table-equalp (hash-table hash-table) boolean (foldable flushable))
 
 ;;;; from the "Arrays" chapter
 
@@ -1141,11 +1158,14 @@
 (defknown (prin1-to-string princ-to-string) (t) simple-string (flushable))
 
 (defknown write-char (character &optional stream-designator) character
-  (explicit-check))
+  (explicit-check)
+  :derive-type #'result-type-first-arg)
+
 (defknown (write-string write-line)
   (string &optional stream-designator &key (:start index) (:end sequence-end))
   string
-  (explicit-check))
+  (explicit-check)
+  :derive-type #'result-type-first-arg)
 
 (defknown (terpri finish-output force-output clear-output)
   (&optional stream-designator) null
@@ -1155,7 +1175,8 @@
   (explicit-check))
 
 (defknown write-byte (integer stream) integer
-  (explicit-check))
+  (explicit-check)
+  :derive-type #'result-type-first-arg)
 
 ;;; FIXME: complicated :DESTROYED-CONSTANT-ARGS
 (defknown format ((or (member nil t) stream string)
@@ -1246,6 +1267,8 @@
 (defknown pathname-version (pathname-designator)
   pathname-version (flushable))
 
+(defknown pathname= (pathname pathname) boolean (movable foldable flushable))
+
 (defknown (namestring file-namestring directory-namestring host-namestring)
   (pathname-designator) (or simple-string null)
   (unsafely-flushable))
@@ -1269,7 +1292,7 @@
 
 (defknown rename-file (pathname-designator filename)
   (values pathname pathname pathname))
-(defknown delete-file (pathname-designator) t)
+(defknown delete-file (pathname-designator) (eql t))
 (defknown probe-file (pathname-designator) (or pathname null) ())
 (defknown file-write-date (pathname-designator) (or unsigned-byte null)
   ())
@@ -1288,7 +1311,7 @@
    (:print t)
    (:if-does-not-exist t)
    (:external-format external-format-designator))
-  t)
+  boolean)
 
 (defknown directory (pathname-designator &key (:resolve-symlinks t))
   list ())
@@ -1409,7 +1432,8 @@
 ;;;; miscellaneous extensions
 
 (defknown symbol-global-value (symbol) t ())
-(defknown set-symbol-global-value (symbol t) t ())
+(defknown set-symbol-global-value (symbol t) t ()
+  :derive-type #'result-type-last-arg)
 
 (defknown get-bytes-consed () unsigned-byte (flushable))
 (defknown mask-signed-field ((integer 0 *) integer) integer
@@ -1446,7 +1470,7 @@
 ;;; FIXME: The second argument here should really be NEGATIVE-INDEX, but doing that
 ;;; breaks the build, and I cannot seem to figure out why. --NS 2006-06-29
 (defknown %more-kw-arg (t fixnum) (values t t))
-(defknown %more-arg-values (t index) * (flushable))
+(defknown %more-arg-values (t index index) * (flushable))
 (defknown %verify-arg-count (index index) (values))
 (defknown %arg-count-error (t) nil)
 (defknown %unknown-values () *)
@@ -1521,14 +1545,45 @@
   function
   (flushable foldable))
 
-(defknown %adjoin     (t list)          list (explicit-check foldable flushable))
-(defknown %adjoin-key (t list function) list (explicit-check foldable flushable call))
-(defknown %assoc      (t list)          list (explicit-check foldable flushable))
-(defknown %assoc-key  (t list function) list (explicit-check foldable flushable call))
-(defknown %member     (t list)          list (explicit-check foldable flushable))
-(defknown %member-key (t list function) list (explicit-check foldable flushable call))
-(defknown %rassoc     (t list)          list (explicit-check foldable flushable))
-(defknown %rassoc-key (t list function) list (explicit-check foldable flushable call))
+(defknown (%adjoin %adjoin-eq %member %member-eq
+           %assoc %assoc-eq %rassoc %rassoc-eq)
+    (t list)
+    list
+    (explicit-check foldable flushable))
+
+(defknown (%adjoin-key %adjoin-key-eq %member-key %member-key-eq
+           %assoc-key %assoc-key-eq %rassoc-key %rassoc-key-eq)
+  (t list function)
+  list
+  (explicit-check foldable flushable call))
+
+(defknown (%assoc-if %assoc-if-not %rassoc-if %rassoc-if-not
+           %member-if %member-if-not)
+  (function list)
+  list
+  (explicit-check foldable flushable call))
+
+(defknown (%assoc-if-key %assoc-if-not-key %rassoc-if-key %rassoc-if-not-key
+           %member-if-key %member-if-not-key)
+  (function list function)
+  list
+  (explicit-check foldable flushable call))
+
+(defknown (%adjoin-test %adjoin-test-not
+           %member-test %member-test-not
+           %assoc-test %assoc-test-not
+           %rassoc-test %rassoc-test-not)
+    (t list function)
+    list
+    (explicit-check foldable flushable call))
+
+(defknown (%adjoin-key-test %adjoin-key-test-not
+           %member-key-test %member-key-test-not
+           %assoc-key-test %assoc-key-test-not
+           %rassoc-key-test %rassoc-key-test-not)
+    (t list function function)
+    list
+    (explicit-check foldable flushable call))
 
 (defknown %check-vector-sequence-bounds (vector index sequence-end)
   index
@@ -1551,10 +1606,12 @@
 (defknown %set-row-major-aref (array index t) t ()
   :destroyed-constant-args (nth-constant-args 1))
 (defknown (%rplaca %rplacd) (cons t) t ()
-  :destroyed-constant-args (nth-constant-args 1))
+  :destroyed-constant-args (nth-constant-args 1)
+  :derive-type #'result-type-last-arg)
 (defknown %put (symbol t t) t ())
 (defknown %setelt (sequence index t) t ()
-  :destroyed-constant-args (nth-constant-args 1))
+  :destroyed-constant-args (nth-constant-args 1)
+  :derive-type #'result-type-last-arg)
 (defknown %svset (simple-vector index t) t ()
   :destroyed-constant-args (nth-constant-args 1))
 (defknown %bitset ((array bit) &rest index) bit ()
@@ -1567,19 +1624,22 @@
   :destroyed-constant-args (nth-constant-args 1))
 (defknown %set-symbol-value (symbol t) t ())
 (defknown (setf symbol-function) (function symbol) function ())
-(defknown %set-symbol-plist (symbol list) list ())
+(defknown %set-symbol-plist (symbol list) list ()
+  :derive-type #'result-type-last-arg)
 (defknown %setnth (unsigned-byte list t) t ()
-  :destroyed-constant-args (nth-constant-args 2))
+  :destroyed-constant-args (nth-constant-args 2)
+  :derive-type #'result-type-last-arg)
 (defknown %set-fill-pointer (complex-vector index) index
     (explicit-check)
-  :destroyed-constant-args (nth-constant-args 1))
+  :destroyed-constant-args (nth-constant-args 1)
+  :derive-type #'result-type-last-arg)
 
 ;;;; ALIEN and call-out-to-C stuff
 
 ;; Used by WITH-PINNED-OBJECTS
 #!+(or x86 x86-64)
 (defknown sb!vm::touch-object (t) (values)
-    (always-translatable))
+  (always-translatable))
 
 #!+linkage-table
 (defknown foreign-symbol-dataref-sap (simple-string)

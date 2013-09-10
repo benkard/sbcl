@@ -2752,7 +2752,7 @@
 (define-instruction set (segment dst cond)
   (:printer cond-set ())
   (:emitter
-   (maybe-emit-rex-for-ea segment dst nil)
+   (maybe-emit-rex-for-ea segment dst nil :operand-size :byte)
    (emit-byte segment #b00001111)
    (emit-byte segment (dpb (conditional-opcode cond) (byte 4 0) #b10010000))
    (emit-ea segment dst #b000)))
@@ -3773,7 +3773,7 @@
          (aver (integerp value))
          (cons type value))
       ((:base-char)
-         (aver (base-char-p value))
+         #!+sb-unicode (aver (base-char-p value))
          (cons :byte (char-code value)))
       ((:character)
          (aver (characterp value))

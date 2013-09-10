@@ -195,3 +195,20 @@
   (test-n-cases '/ 'mpq-div
                 (gen-mpq :limbs limbs :sign t)
                 (gen-mpq :limbs limbs :sign t)))
+
+(define-gmp-test (pow)
+  (test-one-case 'expt 'mpz-pow
+                 16 3))
+
+(defun fac (n)
+  (loop for i from 1 to n
+        for fac = 1 then (* fac i)
+        finally (return fac)))
+
+(define-gmp-test (fac1)
+  (test-one-case 'fac 'mpz-fac
+                 6))
+
+(define-gmp-test (fac2)
+  (test-one-case 'fac 'mpz-fac
+                 63))

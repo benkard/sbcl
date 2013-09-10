@@ -2986,8 +2986,8 @@
         (compile nil `(lambda (x)
                         (declare (character x) (optimize speed))
                         (,name x))))
-      (dolist (name '(char= char/= char< char> char<= char>= char-equal
-                      char-not-equal char-lessp char-greaterp char-not-greaterp
+      (dolist (name '(char= char/= char< char> char<= char>=
+                      char-lessp char-greaterp char-not-greaterp
                       char-not-lessp))
         (setf current name)
         (compile nil `(lambda (x y)
@@ -4770,3 +4770,55 @@
                              G13908)))
                         "23a%b%")))))
     (assert (funcall f))))
+
+(with-test (:name :equal-equalp-transforms)
+  (let* ((s "foo")
+         (bit-vector #*11001100)
+         (values `(nil 1 2 "test"
+                       ;; Floats duplicated here to ensure we get newly created instances
+                       (read-from-string "1.1") (read-from-string "1.2d0")
+                       (read-from-string "1.1") (read-from-string "1.2d0")
+                       1.1 1.2d0 '("foo" "bar" "test")
+                       #(1 2 3 4) #*101010 (make-broadcast-stream) #p"/tmp/file"
+                       ,s (copy-seq ,s) ,bit-vector (copy-seq ,bit-vector)
+                       ,(make-hash-table) #\a #\b #\A #\C
+                       ,(make-random-state) 1/2 2/3)))
+    ;; Test all permutations of different types
+    (assert
+     (loop
+       for x in values
+       always (loop
+                for y in values
+                always
+                (and (eq (funcall (compile nil `(lambda (x y)
+                                                  (equal (the ,(type-of x) x)
+                                                         (the ,(type-of y) y))))
+                                  x y)
+                         (equal x y))
+                     (eq (funcall (compile nil `(lambda (x y)
+                                                  (equalp (the ,(type-of x) x)
+                                                          (the ,(type-of y) y))))
+                                  x y)
+                         (equalp x y))))))
+    (assert
+     (funcall (compile
+               nil
+               `(lambda (x y)
+                  (equal (the (cons (or simple-bit-vector simple-base-string))
+                              x)
+                         (the (cons (or (and bit-vector (not simple-array))
+                                        (simple-array character (*))))
+                              y))))
+              (list (string 'list))
+              (list "LIST")))
+    (assert
+     (funcall (compile
+               nil
+               `(lambda (x y)
+                  (equalp (the (cons (or simple-bit-vector simple-base-string))
+                               x)
+                          (the (cons (or (and bit-vector (not simple-array))
+                                         (simple-array character (*))))
+                               y))))
+              (list (string 'list))
+              (list "lisT")))))

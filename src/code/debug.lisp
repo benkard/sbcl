@@ -508,7 +508,7 @@ thread, NIL otherwise."
                            (setf reversed-result
                                  (append (reverse
                                           (multiple-value-list
-                                           (sb!c::%more-arg-values context count)))
+                                           (sb!c::%more-arg-values context 0 count)))
                                          reversed-result))
                            (return-from enumerating))
                          (push (make-unprintable-object "unavailable &MORE argument")
@@ -559,7 +559,7 @@ thread, NIL otherwise."
                  (butlast args 2)
                  (if (fixnump count)
                      (multiple-value-list
-                      (sb!c:%more-arg-values context count))
+                      (sb!c:%more-arg-values context 0 count))
                      (list
                       (make-unprintable-object "more unavailable arguments")))))
               args)
@@ -1595,7 +1595,7 @@ and LDB (the low-level debugger).  See also ENABLE-DEBUGGER."
           (when (and more-context more-count)
             (format *debug-io* "~S  =  ~S~%"
                     'more
-                    (multiple-value-list (sb!c:%more-arg-values more-context more-count))))
+                    (multiple-value-list (sb!c:%more-arg-values more-context 0 more-count))))
           (cond
            ((not any-p)
             (format *debug-io*
@@ -1618,12 +1618,6 @@ and LDB (the low-level debugger).  See also ENABLE-DEBUGGER."
          *debug-io*))
 
 ;;;; source location printing
-
-;;; Stuff to clean up before saving a core
-(defun debug-deinit ()
-  ;; Nothing to do right now. Once there was, maybe once there
-  ;; will be again.
-  )
 
 (defun code-location-source-form (location context &optional (errorp t))
   (let* ((start-location (maybe-block-start-location location))
@@ -1846,11 +1840,6 @@ and LDB (the low-level debugger).  See also ENABLE-DEBUGGER."
   (sb!di:debug-var-info-available
    (sb!di:code-location-debug-fun
     (sb!di:frame-code-location frame))))
-
-;; Hack: ensure that *U-T-F-F* has a tls index.
-#!+unwind-to-frame-and-call-vop
-(let ((sb!vm::*unwind-to-frame-function* (lambda ()))))
-
 
 ;;;; debug loop command utilities
 

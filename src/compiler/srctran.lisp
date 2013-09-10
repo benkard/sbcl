@@ -3185,7 +3185,7 @@
         ,(lvar-value x))
       (give-up-ir1-transform)))
 
-(dolist (x '(= char= + * logior logand logxor logtest))
+(dolist (x '(= char= two-arg-char-equal + * logior logand logxor logtest))
   (%deftransform x '(function * *) #'commutative-arg-swap
                  "place constant arg last"))
 
@@ -3707,7 +3707,8 @@
 
 ;;;; character operations
 
-(deftransform char-equal ((a b) (base-char base-char))
+(deftransform two-arg-char-equal ((a b) (base-char base-char) *
+                                  :policy (> speed space))
   "open code"
   '(let* ((ac (char-code a))
           (bc (char-code b))
@@ -3718,6 +3719,19 @@
              (or (and (> sum 161) (< sum 213))
                  (and (> sum 415) (< sum 461))
                  (and (> sum 463) (< sum 477))))))))
+
+(deftransform two-arg-char-equal ((a b) (* (constant-arg character)) *
+                                  :node node)
+  (let ((char (lvar-value b)))
+    (if (both-case-p char)
+        (let ((reverse (if (upper-case-p char)
+                           (char-downcase char)
+                           (char-upcase char))))
+          (if (policy node (> speed space))
+              `(or (char= a ,char)
+                   (char= a ,reverse))
+              `(char-equal-constant a ,char ,reverse)))
+        '(char= a b))))
 
 (deftransform char-upcase ((x) (base-char))
   "open code"
@@ -3821,25 +3835,72 @@
   "convert to simpler equality predicate"
   (let ((x-type (lvar-type x))
         (y-type (lvar-type y))
-        (string-type (specifier-type 'string))
-        (bit-vector-type (specifier-type 'bit-vector)))
-    (cond
-      ((same-leaf-ref-p x y) t)
-      ((and (csubtypep x-type string-type)
-            (csubtypep y-type string-type))
-       '(string= x y))
-      ((and (csubtypep x-type bit-vector-type)
-            (csubtypep y-type bit-vector-type))
-       '(bit-vector-= x y))
-      ;; if at least one is not a string, and at least one is not a
-      ;; bit-vector, then we can reason from types.
-      ((and (not (and (types-equal-or-intersect x-type string-type)
-                      (types-equal-or-intersect y-type string-type)))
-            (not (and (types-equal-or-intersect x-type bit-vector-type)
-                      (types-equal-or-intersect y-type bit-vector-type)))
-            (not (types-equal-or-intersect x-type y-type)))
-       nil)
-      (t (give-up-ir1-transform)))))
+        (combination-type (specifier-type '(or bit-vector string
+                                            cons pathname))))
+    (flet ((both-csubtypep (type)
+             (let ((ctype (specifier-type type)))
+               (and (csubtypep x-type ctype)
+                    (csubtypep y-type ctype)))))
+      (cond
+        ((same-leaf-ref-p x y) t)
+        ((both-csubtypep 'string)
+         '(string= x y))
+        ((both-csubtypep 'bit-vector)
+         '(bit-vector-= x y))
+        ((both-csubtypep 'pathname)
+         '(pathname= x y))
+        ((or (not (types-equal-or-intersect x-type combination-type))
+             (not (types-equal-or-intersect y-type combination-type)))
+         (if (types-equal-or-intersect x-type y-type)
+             '(eql x y)
+             ;; Can't simply check for type intersection if both types are combination-type
+             ;; since array specialization would mean types don't intersect, even when EQUAL
+             ;; doesn't care for specialization.
+             ;; Previously checking for intersection in the outer COND resulted in
+             ;;
+             ;; (equal (the (cons (or simple-bit-vector
+             ;;                       simple-base-string))
+             ;;             x)
+             ;;        (the (cons (or (and bit-vector (not simple-array))
+             ;;                       (simple-array character (*))))
+             ;;             y))
+             ;; being incorrectly folded to NIL
+             nil))
+        (t (give-up-ir1-transform))))))
+
+(deftransform equalp ((x y) * *)
+  "convert to simpler equality predicate"
+  (let ((x-type (lvar-type x))
+        (y-type (lvar-type y))
+        (combination-type (specifier-type '(or number array
+                                            character
+                                            cons pathname
+                                            instance hash-table))))
+    (flet ((both-csubtypep (type)
+             (let ((ctype (specifier-type type)))
+               (and (csubtypep x-type ctype)
+                    (csubtypep y-type ctype)))))
+      (cond
+        ((same-leaf-ref-p x y) t)
+        ((both-csubtypep 'string)
+         '(string-equal x y))
+        ((both-csubtypep 'bit-vector)
+         '(bit-vector-= x y))
+        ((both-csubtypep 'pathname)
+         '(pathname= x y))
+        ((both-csubtypep 'character)
+         '(char-equal x y))
+        ((both-csubtypep 'number)
+         '(= x y))
+        ((both-csubtypep 'hash-table)
+         '(hash-table-equalp x y))
+        ((or (not (types-equal-or-intersect x-type combination-type))
+             (not (types-equal-or-intersect y-type combination-type)))
+         ;; See the comment about specialized types in the EQUAL transform above
+         (if (types-equal-or-intersect y-type x-type)
+             '(eq x y)
+             nil))
+        (t (give-up-ir1-transform))))))
 
 ;;; Convert to EQL if both args are rational and complexp is specified
 ;;; and the same for both.
@@ -4007,15 +4068,15 @@
                                                             'character))
 
 (define-source-transform char-equal (&rest args)
-  (multi-compare 'sb!impl::two-arg-char-equal args nil 'character t))
+  (multi-compare 'two-arg-char-equal args nil 'character t))
 (define-source-transform char-lessp (&rest args)
-  (multi-compare 'sb!impl::two-arg-char-lessp args nil 'character t))
+  (multi-compare 'two-arg-char-lessp args nil 'character t))
 (define-source-transform char-greaterp (&rest args)
-  (multi-compare 'sb!impl::two-arg-char-greaterp args nil 'character t))
+  (multi-compare 'two-arg-char-greaterp args nil 'character t))
 (define-source-transform char-not-greaterp (&rest args)
-  (multi-compare 'sb!impl::two-arg-char-greaterp args t 'character t))
+  (multi-compare 'two-arg-char-greaterp args t 'character t))
 (define-source-transform char-not-lessp (&rest args)
-  (multi-compare 'sb!impl::two-arg-char-lessp args t 'character t))
+  (multi-compare 'two-arg-char-lessp args t 'character t))
 
 ;;; This function does source transformation of N-arg inequality
 ;;; functions such as /=. This is similar to MULTI-COMPARE in the <3
@@ -4340,7 +4401,7 @@
 
 (deftransform %rest-values ((list context count))
   (if (rest-var-more-context-ok list)
-      `(%more-arg-values context count)
+      `(%more-arg-values context 0 count)
       `(values-list list)))
 
 (deftransform %rest-ref ((n list context count))
