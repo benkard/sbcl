@@ -70,7 +70,7 @@
 
 (declaim (inline get-arglist))
 (defun get-arglist ()
-  (multiple-value-list (sb!c:%more-arg-values *more* *argnum*)))
+  (multiple-value-list (sb!c:%more-arg-values *more* 0 *argnum*)))
 
 (defun current-path ()
   (when (boundp 'sb!c::*current-path*)
