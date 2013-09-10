@@ -659,6 +659,8 @@
  #!+sb-eval
  ("src/code/eval2-types"        :not-host)
  #!+sb-eval
+ ("src/code/eval2-util"         :not-host)
+ #!+sb-eval
  ("src/code/eval2-sbcl"         :not-host)
  #!+sb-eval
  ("src/code/eval2"              :not-host)

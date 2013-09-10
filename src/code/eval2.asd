@@ -7,6 +7,7 @@
                #+sbcl (:file "early-eval2")
                (:file "eval2-macros")
                (:file "eval2-types")
+               (:file "eval2-util")
                (:file "eval2-generic")
                #+ccl (:file "eval2-ccl")
                #+sbcl (:file "eval2-sbcl")
