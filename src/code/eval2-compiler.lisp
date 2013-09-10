@@ -437,7 +437,7 @@
                    (#.*impl-named-lambda-syms*
                     (compile-lambda (cddr fun-form) :name (cadr fun-form)))
                    (t
-                    (verify-function-name)
+                    (verify-function-name fun-form)
                     (compile-function-ref fun-form)))))))
            ((lambda)
             (compile-lambda (rest form)))
