@@ -237,13 +237,20 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
             `(%lambda (,name ,(current-path) ,(current-location) ,lambda-list nil)
                ,(compile-form
                  `(%let* (,lambda-list ,name t)
+                         ;; If all REQUIRED variables that we're
+                         ;; binding are lexical, we can use
+                         ;; %FETCH-ARGS to set them all at once.
                          ,(if (disjointp specials required)
-                              `(,required
+                              `(,required  ;this instructs %let* to
+                                           ;skip binding the REQUIRED
+                                           ;variables
                                 (%fetch-args ,required-num))
                               nil)
-                         (,@(loop for arg in required
+                         (;; required arguments (unless skipped by the above)
+                          ,@(loop for arg in required
                                   collect `(,arg (%get-arg ,i))
                                   do (incf i))
+                          ;; optionals
                           ,@(loop for arg in optional
                                   for var = (lambda-binding-main-var arg)
                                   for default = (lambda-binding-default arg)
@@ -254,12 +261,14 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
                                   when suppliedp
                                   collect `(,suppliedp (< ,i %arg-count))
                                   do (incf i))
+                          ;; rest list
                           ,@(when (or restp keyp)
                               `((,rest (%arglist-from ,i))
                                 ,@(when keyp
                                     `((,(gensym)
                                        (%check-key-args
                                         ,(+ required-num optional-num)))))))
+                          ;; keyword arguments
                           ,@(loop for arg in keys
                                   for var = (lambda-binding-main-var arg)
                                   for key = (lambda-key arg)
@@ -270,6 +279,7 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
                                   collect `(,suppliedp
                                             (and (get-properties ,rest '(,key)) t))
                                   do (incf i))
+                          ;; &aux bindings
                           ,@(loop for arg in aux
                                   for var = (lambda-binding-main-var arg)
                                   for default = (lambda-binding-default arg)
@@ -278,6 +288,7 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
                          (%check-args ,required-num
                                       ,(unless (or keyp restp) (+ required-num optional-num)))
                          ,@(when (and keyp (not allowp))
+                             ;; check validity of keyword arguments
                              `((unless (getf ,rest :allow-other-keys nil)
                                  (let ((to-check ,rest))
                                    (tagbody
@@ -360,12 +371,10 @@ Do not call this function directly.  Call COMPILE-FORM instead."
    (cond
      ((self-evaluating-p form)
       ;;FIXME load forms?
-      ;;(format t "~&~S" form)
       `',form)
      (t
       (etypecase form
         (symbol
-         ;;(format t "~&~S" form)
          (case form
            ((%arg-count)
             form)
@@ -378,7 +387,6 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                     (t
                      (compile-ref form)))))))
         (cons
-         ;;(format t "(~&~S)" (first form))
          (case (first form)
            ((%get-arg %arglist-from %get-var %get-in-env %fdef-ref %set-envbox
              %check-args %check-key-args)
@@ -678,7 +686,6 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                `(%tagbody (,go-tag)
                   ,@(mapcar (lambda (forms) (mapcar #'compile-form forms)) blocks))))
             (otherwise
-             ;; FIXME: Handle SETF expanders?
              (destructuring-bind (f . args) form
                (check-type f (or list symbol))
                (let ((local-macro? (context-find-macro *context* f))

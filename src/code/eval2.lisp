@@ -101,10 +101,10 @@
 (defun prepare-lambda (body name current-path source-location lambda-list doc)
   "Generate an EVAL-CLOSURE that creates a MINIMALLY-COMPILED-FUNCTION with the supplied parameters.
 
-In the MINIMALLY-COMPILED-FUNCTION, *ENVBOX* gets bound to a box that,
-when the MINIMALLY-COMPILED-FUNCTION is executed, is set to point to
-the environment that corresponds to the call frame for this call
-instance."
+In the MINIMALLY-COMPILED-FUNCTION, *ENV-BOX* gets bound to a box
+that, when the MINIMALLY-COMPILED-FUNCTION is executed, is set to
+point to the environment that corresponds to the call frame for this
+call instance."
   (declare (ignorable name current-path source-location))
   (let ((body* (prepare-progn body)))
     (eval-lambda (env) (%lambda current-path source-location)
