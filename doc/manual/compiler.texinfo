@@ -16,7 +16,7 @@ separate that they have their own chapter, @ref{Efficiency}.
 * Compiler Policy::             
 * Compiler Errors::             
 * Open Coding and Inline Expansion::  
-* Minimal Compiler::
+* Interpreter and Minimal Compiler::
 @end menu
 
 @node  Diagnostic Messages
