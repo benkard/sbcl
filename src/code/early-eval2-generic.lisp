@@ -27,10 +27,10 @@
     (format stream "~A ~A" '#:minimally-compiled-function
             (minimally-compiled-function-name obj))))
 
-(defvar *dynvars*)
-(defvar *dynvals*)
+(defvar *dyn-vars*)
+(defvar *dyn-vals*)
 (defvar *mode* :execute)
 (defvar *context*)
 (defvar *args*)
-(defvar *argnum*)
-(defvar *envbox*)
+(defvar *arg-count*)
+(defvar *env-box*)

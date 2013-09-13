@@ -26,35 +26,35 @@
 ;;; the result of the evaluation of the form foo.
 ;;;
 ;;;
-;;;   %argnum
+;;;   %arg-count
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, returns the number of
 ;;;     arguments passed.
 ;;;
 ;;;
-;;;   (%varget <sym>)
+;;;   (%get-var <sym>)
 ;;;
 ;;;     Read the SYMBOL-VALUE of a special variable.
 ;;;
 ;;;
-;;;   (%varset <sym> valform)
+;;;   (%set-var <sym> valform)
 ;;;
 ;;;     Set the SYMBOL-VALUE of SYM to the result of [[valform]].
 ;;;
 ;;;
-;;;   (%varpush <sym> valform)
+;;;   (%push-var <sym> valform)
 ;;;
 ;;;     PUSH [[valform]] onto (SYMBOL-VALUE <sym>).
 ;;;     This is basically a performance hack we use in the compiler.
 ;;;
 ;;;
-;;;   (%envget <nesting> <offset>)
+;;;   (%get-in-env <nesting> <offset>)
 ;;;
 ;;;     Get the value of the lexical variable at <nesting>/<offset> in
 ;;;     the environment.
 ;;;
 ;;;
-;;;   (%envset <nesting> <offset> valform)
+;;;   (%set-in-env <nesting> <offset> valform)
 ;;;
 ;;;     Set the value of the lexical variable at <nesting>/<offset> in
 ;;;     the environment to [[valform]].
@@ -71,12 +71,12 @@
 ;;;     function call information.
 ;;;
 ;;;
-;;;   (%getarg <i>)
+;;;   (%get-arg <i>)
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, fetch the I'h argument.
 ;;;
 ;;;
-;;;   (%fetchargs <n>)
+;;;   (%fetch-args <n>)
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, fetch the first N
 ;;;     arguments and put them into the first N lexical variable slots
@@ -87,19 +87,19 @@
 ;;;     variables.
 ;;;
 ;;;
-;;;   (%arglistfrom <n>)
+;;;   (%arglist-from <n>)
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, get a LIST of arguments,
 ;;;     skipping the first N variables.
 ;;;
 ;;;
-;;;   (%checkargs <min> [<max>])
+;;;   (%check-args <min> [<max>])
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, check that the number of
 ;;;     arguments is (>= MIN) and (<= MAX).
 ;;;
 ;;;
-;;;   (%checkkeyargs <positional-num>)
+;;;   (%check-key-args <positional-num>)
 ;;;
 ;;;     In the dynamic context of a %LAMBDA, check that the number of
 ;;;     keyword arguments is even, given the number of expected
@@ -239,26 +239,26 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
                  `(%let* (,lambda-list ,name t)
                          ,(if (disjointp specials required)
                               `(,required
-                                (%fetchargs ,required-num))
+                                (%fetch-args ,required-num))
                               nil)
                          (,@(loop for arg in required
-                                  collect `(,arg (%getarg ,i))
+                                  collect `(,arg (%get-arg ,i))
                                   do (incf i))
                           ,@(loop for arg in optional
                                   for var = (lambda-binding-main-var arg)
                                   for default = (lambda-binding-default arg)
                                   for suppliedp = (lambda-binding-suppliedp-var arg)
-                                  collect `(,var (if (< ,i %argnum)
-                                                     (%getarg ,i)
+                                  collect `(,var (if (< ,i %arg-count)
+                                                     (%get-arg ,i)
                                                      ,default))
                                   when suppliedp
-                                  collect `(,suppliedp (< ,i %argnum))
+                                  collect `(,suppliedp (< ,i %arg-count))
                                   do (incf i))
                           ,@(when (or restp keyp)
-                              `((,rest (%arglistfrom ,i))
+                              `((,rest (%arglist-from ,i))
                                 ,@(when keyp
                                     `((,(gensym)
-                                       (%checkkeyargs
+                                       (%check-key-args
                                         ,(+ required-num optional-num)))))))
                           ,@(loop for arg in keys
                                   for var = (lambda-binding-main-var arg)
@@ -275,8 +275,8 @@ The result is a %LAMBDA VM code form for the supplied lambda expression."
                                   for default = (lambda-binding-default arg)
                                   collect `(,var ,default)))
                          (declare (special ,@specials))
-                         (%checkargs ,required-num
-                                     ,(unless (or keyp restp) (+ required-num optional-num)))
+                         (%check-args ,required-num
+                                      ,(unless (or keyp restp) (+ required-num optional-num)))
                          ,@(when (and keyp (not allowp))
                              `((unless (getf ,rest :allow-other-keys nil)
                                  (let ((to-check ,rest))
@@ -303,12 +303,12 @@ VAR can be the name of a special or *CONTEXT*-local variable."
       (let* ((lexical (context-find-lexical *context* var))
              (nesting (lexical-nesting lexical))
              (offset (lexical-offset lexical)))
-        `(%envget ,nesting ,offset))
+        `(%get-in-env ,nesting ,offset))
       (if (globally-constant-p var)
-          `(%varget ,var)
+          `(%get-var ,var)
           (progn
             (assume-special *context* var)
-            `(%varget ,var)))))
+            `(%get-var ,var)))))
 
 (defun compile-function-ref (function-name)
   "Compile a function reference.
@@ -367,7 +367,7 @@ Do not call this function directly.  Call COMPILE-FORM instead."
         (symbol
          ;;(format t "~&~S" form)
          (case form
-           ((%argnum)
+           ((%arg-count)
             form)
            (otherwise
             (let ((local-macro? (context-find-symbol-macro *context* form)))
@@ -380,18 +380,18 @@ Do not call this function directly.  Call COMPILE-FORM instead."
         (cons
          ;;(format t "(~&~S)" (first form))
          (case (first form)
-           ((%getarg %arglistfrom %varget %envget %fdef-ref %set-envbox
-                     %checkargs %checkkeyargs)
+           ((%get-arg %arglist-from %get-var %get-in-env %fdef-ref %set-envbox
+             %check-args %check-key-args)
             form)
-           ((%varset)
+           ((%set-var)
             (destructuring-bind (var val) (rest form)
-              `(%varset ,var ,(compile-form val))))
-           ((%varpush)
+              `(%set-var ,var ,(compile-form val))))
+           ((%push-var)
             (destructuring-bind (val var) (rest form)
-              `(%varpush ,(compile-form val) ,var)))
-           ((%envset)
+              `(%push-var ,(compile-form val) ,var)))
+           ((%set-in-env)
             (destructuring-bind (nesting offset val) (rest form)
-              `(%envset ,nesting ,offset ,(compile-form val))))
+              `(%set-in-env ,nesting ,offset ,(compile-form val))))
            ((%with-binding)
             (destructuring-bind (var val &body body) (rest form)
               `(%with-binding ,var ,val ,(mapcar #'compile-form body))))
@@ -472,12 +472,12 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                                         (nesting (lexical-nesting lexical))
                                         (offset  (lexical-offset lexical)))
                                    (compile-form
-                                    `(%envset ,nesting ,offset ,valform))))
+                                    `(%set-in-env ,nesting ,offset ,valform))))
                                 (t
                                  (assume-special *context* var)
                                  (prevent-constant-modification var)
                                  (compile-form
-                                  `(%varset ,var ,valform)))))))
+                                  `(%set-var ,var ,valform)))))))
            ((flet labels)
             (destructuring-bind (bindings &rest exprs) (rest form)
               (with-parsed-body (body specials) exprs
@@ -500,11 +500,11 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                      ,@(loop for (name lambda-list . body) in bindings
                              for i from 0
                              collect
-                                `(%envset 0 ,i
-                                          ,(with-context binding-context
-                                             (compile-lambda (cons lambda-list body)
-                                                             :name name
-                                                             :blockp t))))
+                                `(%set-in-env 0 ,i
+                                              ,(with-context binding-context
+                                                 (compile-lambda (cons lambda-list body)
+                                                                 :name name
+                                                                 :blockp t))))
                      ,(with-context body-context
                         (compile-progn body)))))))
             ((let)
@@ -539,7 +539,7 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                    (with-context binding-context
                      `(%with-environment :indefinite-extent ,set-box-p (,debug-info ,varnum)
                         (,@(if dynamic-block-p
-                               `(progv '(*dynvars* *dynvals*) '(nil nil))
+                               `(progv '(*dyn-vars* *dyn-vals*) '(nil nil))
                                `(progn))
                          ,@init-block
                          ,@(nlet iter ((remaining-bindings real-bindings))
@@ -547,8 +547,8 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                                  (let ((real-body-context
                                          (context-add-specials body-context specials)))
                                    (if dynamic-block-p
-                                       `((progv (%varget *dynvars*)
-                                             (%varget *dynvals*)
+                                       `((progv (%get-var *dyn-vars*)
+                                                (%get-var *dyn-vals*)
                                            ,(with-context real-body-context
                                               (compile-progn body))))
                                        `(,(with-context real-body-context
@@ -562,8 +562,8 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                                          (progn
                                            (context-add-special! body-context var)
                                            (if (eq (first form) '%let)
-                                               `((%varpush ,val* *dynvals*)
-                                                 (%varpush ',var *dynvars*)
+                                               `((%push-var ,val* *dyn-vals*)
+                                                 (%push-var ',var *dyn-vars*)
                                                  ,@(iter (rest remaining-bindings)))
                                                `((%with-binding ,var ,val*
                                                                 ,@(iter (rest remaining-bindings))))))
@@ -573,7 +573,7 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                                                   (nesting (lexical-nesting lexical))
                                                   (offset (lexical-offset lexical)))
                                              `(,@(unless (member var noinit-vars)
-                                                   `((%envset ,nesting ,offset ,val*)))
+                                                   `((%set-in-env ,nesting ,offset ,val*)))
                                                ,@(iter (rest remaining-bindings)))))))))))))))))
             ((load-time-value)
              (destructuring-bind (form) (rest form)

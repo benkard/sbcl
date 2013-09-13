@@ -45,7 +45,7 @@
   "Create a MINIMALLY-COMPILED-FUNCTION object with body BODY and attach metainformation."
   `(make-minimally-compiled-function
     ,name ,lambda-list ,doc ,source-loc ,current-path
-    (sb!int:named-lambda minimally-compiled-function (sb!int:&more *more* *argnum*)
+    (sb!int:named-lambda minimally-compiled-function (sb!int:&more *more* *arg-count*)
       (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)))
 
@@ -129,7 +129,7 @@
 
 (declaim (inline get-arglist))
 (defun get-arglist ()
-  (multiple-value-list (sb!c:%more-arg-values *more* 0 *argnum*)))
+  (multiple-value-list (sb!c:%more-arg-values *more* 0 *arg-count*)))
 
 
 ;;;; EFFICIENT ACCESS TO GLOBAL FUNCTION DEFINITIONS

@@ -28,7 +28,7 @@
                               &body body)
   (declare (ignore current-path source-info))
   `(let ((fn (lambda (&rest *args*)
-               (let ((*argnum* (length *args*)))
+               (let ((*arg-count* (length *args*)))
                  ,@body))))
      (if name
          (ccl::lfun-name fn ,name)

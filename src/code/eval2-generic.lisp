@@ -26,7 +26,7 @@
                                      ,lambda-list
                                      ,doc
                                      (lambda (&rest *args*)
-                                       (let ((*argnum* (length *args*)))
+                                       (let ((*arg-count* (length *args*)))
                                          ,@body))))
 
 (declaim (inline get-arg))
