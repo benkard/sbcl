@@ -29,9 +29,26 @@
               (minimally-compiled-function-name obj)))))
 
 (defvar *dynvars*)
+;;"An internal variable set by the implementation of LET to track special variables to bind."
 (defvar *dynvals*)
-(defvar *mode* :execute)
-(defvar *context*)
+;;"An internal variable set by the implementation of LET to track values to bind to special variables."
+
+(declaim (type (member :execute :compile-time-too :not-compile-time) *mode*))
+(defvar *mode* :execute
+  "The processing mode for COMPILE-FORM.")
+
+;;(declaim (type context *context*))
+(defvar *context*
+  "The current lexical context.  Only valid in the dynamic context of a COMPILE-FORM call.")
+
+(declaim (type integer *more* *argnum*))
 (defvar *more*)
+;;"The &MORE argument context of the currently executing MINIMALLY-COMPILED-FUNCTION."
 (defvar *argnum*)
+;;"The argument count of the currently executing MINIMALLY-COMPILED-FUNCTION."
+
+;;(declaim (type (simple-array environment ()) *envbox*))
 (defvar *envbox*)
+;;"A box containing a pointer to the environment of the currently executing MINIMALLY-COMPILED-FUNCTION.
+;;
+;;This is used for debugging purposes only."

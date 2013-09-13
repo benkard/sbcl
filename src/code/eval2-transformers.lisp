@@ -7,6 +7,9 @@
 (define-symbol-macro block-mapping nil)
 
 (defmacro %block (block-name &body body &environment env)
+  ;; At compile-time, we establish a mapping from block names to
+  ;; catch-tags.  A RETURN-FROM is simply translated into a THROW to
+  ;; the corresponding tag.
   (let ((catch-tag (gensym)))
     `(symbol-macrolet ((block-mapping
                          ,(acons block-name
@@ -33,6 +36,16 @@
   (error "GO outside of TAGBODY"))
 
 (defmacro %parsed-tagbody (&body body)
+  ;; We wrap each TAGBODY in a CATCH form.  Since TAGBODYs can be
+  ;; nested, we track a mapping from TAGBODY labels to their
+  ;; corresponding catch-tags.
+  ;;
+  ;; A GO form is translated into a THROW to the appropriate
+  ;; catch-tag.  The value thrown is the index of the tagbody block we
+  ;; want to jump to.
+  ;;
+  ;; The implementation of %TAGBODY handles the actual looping and
+  ;; jumping.
   (let* ((catch-tag (gensym "TAGBODY-CATCH-TAG"))
          (labels-and-bodies (parse-tagbody-tags-and-bodies body))
          (tagbody-labels (mapcar 'first labels-and-bodies))

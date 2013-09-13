@@ -176,6 +176,23 @@
 ;;;
 
 
+
+;;;; Utilities
+(defun assume-special (context var)
+  "Signal a warning if VAR is unknown in CONTEXT."
+  (unless (or (globally-special-p var)
+              (context-var-special-p context var))
+    (warn 'simple-warning
+          :format-control "Undefined variable: ~S"
+          :format-arguments (list var))))
+
+(defun prevent-constant-modification (var)
+  "Signal a warning if VAR is a constant."
+  (when (globally-constant-p var)
+    (warn "~S is a constant and thus can't be set." var)))
+
+
+;;;; Component compilers
 (defun compile-nil ()
   ''nil)
 
@@ -183,6 +200,9 @@
   `(progn ,@(mapcar #'compile-form forms)))
 
 (defun compile-macro-lambda (name lambda-form)
+  "Compile a macro lambda form for MACROLET.
+
+The result is a %LAMBDA VM code form for the macroexpander."
   (destructuring-bind (lambda-list &rest body)
       lambda-form
     (let* ((whole (gensym "WHOLE"))
@@ -198,6 +218,9 @@
                       ))))
 
 (defun compile-lambda (lambda-form &key (name nil) (blockp nil))
+  "Compile a lambda with an optional block and name.
+
+The result is a %LAMBDA VM code form for the supplied lambda expression."
   (destructuring-bind (lambda-list &rest exprs) lambda-form
     (with-parsed-body (body specials) exprs
       (multiple-value-bind (required optional restp rest keyp keys allowp auxp aux
@@ -271,6 +294,11 @@
                           ,@body))))))))))
 
 (defun compile-ref (var)
+  "Compile a variable reference.
+
+The result is a VM code form for reading the variable.
+
+VAR can be the name of a special or *CONTEXT*-local variable."
   (if (context-var-lexical-p *context* var)
       (let* ((lexical (context-find-lexical *context* var))
              (nesting (lexical-nesting lexical))
@@ -283,21 +311,38 @@
             `(%varget ,var)))))
 
 (defun compile-function-ref (function-name)
+  "Compile a function reference.
+
+FUNCTION-NAME can designate a local or global function."
   (if (local-function-p *context* function-name)
       (compile-ref `(function ,function-name))
       `(%fdef-ref ,function-name)))
 
 (defun compile-local-call (f args)
+  "Compile a call to the locally defined function named by F."
   (let* ((lexical (context-find-lexical *context* `(function ,f)))
          (nesting (lexical-nesting lexical))
          (offset (lexical-offset lexical)))
     `(%local-call ,nesting ,offset ,@(mapcar #'compile-form args))))
 
 (defun compile-global-call (f args)
+  "Compile a call to the global function named by F."
   (let ((args* (mapcar #'compile-form args)))
     `(%global-call ,f ,@args*)))
 
 (defun %compile-form (form mode)
+  "Compile FORM into VM code in compilation mode MODE.
+
+FORM must be a valid Common Lisp form within the lexical context
+*CONTEXT*.
+
+MODE controls the processing mode.  It must be one of
+
+ - :EXECUTE (which enables non-toplevel compilation)
+ - :COMPILE-TIME-TOO (set by EVAL-WHEN)
+ - :NOT-COMPILE-TIME (the default for toplevel forms)
+
+Do not call this function directly.  Call COMPILE-FORM instead."
   (when (and (eq mode :compile-time-too)
              (not (and (consp form)
                        (or

@@ -6,6 +6,20 @@
 (declaim-optimizations)
 
 
+;;;; SETTINGS
+(defparameter *debug-interpreter* nil
+  "If true, preserve SB-EVAL2::EVAL-CLOSURE frames in stack traces.  Otherwise, generate human-readable stack frames of SB-EVAL2:MINIMALLY-COMPILED-FUNCTION calls suitable for debugging programs.")
+
+
+;;;; COMPILE-TIME CONSTANTS
+;;;
+;;; These map implementation-specific symbols to compiler features.
+;;;
+;;; (It might be worthwhile to abstract the relevant parts of
+;;; %COMPILE-FORM away in a more flexible way, such as by factoring
+;;; all operators into separate definitions similar to the way
+;;; SB-WALKER does it.)
+;;;
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *impl-compiler-let-syms* '())
   (defvar *impl-named-lambda-syms* '(sb!int:named-lambda))
@@ -13,39 +27,9 @@
   (defvar *impl-the-syms* '(sb!ext:truly-the)))
 
 
-(defun verify-function-name (thing)
-  (assert (sb!int:valid-function-name-p thing)))
-
-
-(defvar *dump-info* nil)
-(defvar *set-info* nil)
-(defvar *source-paths&locations* (make-hash-table :weakness :key
-                                                  :test #'eq
-                                                  :synchronized t))
-
-(defparameter *debug-interpreter* nil)
-
-(defun source-path (closure)
-  (car (source-path&location closure)))
-(defun source-location (closure)
-  (cdr (source-path&location closure)))
-(defun source-path&location (closure)
-  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
-    (gethash closure *source-paths&locations*)))
-(defun (setf source-path&location) (val closure)
-  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
-    (setf (gethash closure *source-paths&locations*) val)))
-
-(defun annotate-lambda-with-source (closure current-path source-location)
-  (when source-location
-    ;; XXX It's strange that (car (last sb!c::*current-path*)) can
-    ;; ever be a non-fixnum.  This seemingly occurs only in the
-    ;; context of #. evaluation (where *source-path* etc. are bound
-    ;; but not relevant for the form we are processing).
-    (setf (source-path&location closure) (cons current-path source-location)))
-  closure)
-
+;;;; PREPARE-FORM UTILITIES
 (defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
+  "Create an EVAL-CLOSURE with body BODY and attach source code information."
   `(annotate-lambda-with-source
     (sb!int:named-lambda ,(if kind
                               `(eval-closure ,kind)
@@ -58,54 +42,20 @@
 
 (defmacro interpreted-lambda ((name current-path source-loc lambda-list doc)
                               &body body)
+  "Create a MINIMALLY-COMPILED-FUNCTION object with body BODY and attach metainformation."
   `(make-minimally-compiled-function
     ,name ,lambda-list ,doc ,source-loc ,current-path
     (sb!int:named-lambda minimally-compiled-function (sb!int:&more *more* *argnum*)
       (declare (optimize sb!c::store-closure-debug-pointer))
       ,@body)))
 
-(declaim (inline get-arg))
-(defun get-arg (i)
-  (sb!c:%more-arg *more* i))
 
-(declaim (inline get-arglist))
-(defun get-arglist ()
-  (multiple-value-list (sb!c:%more-arg-values *more* 0 *argnum*)))
-
-(defun current-path ()
-  (when (boundp 'sb!c::*current-path*)
-    sb!c::*current-path*))
-
-(defun current-location ()
-  (when (and (current-path)
-             (typep (car (last (current-path)))
-                    '(or fixnum null)))
-    (sb!c::make-definition-source-location)))
-
-(defun self-evaluating-p (form)
-  (sb!int:self-evaluating-p form))
-
-(defun fun-name-block-name (fun-name)
-  (sb!int:fun-name-block-name fun-name))
-(defun parse-macrolet-binding-form (lambda-list whole body name env)
-  (sb!kernel:parse-defmacro lambda-list
-                            whole
-                            body
-                            name
-                            'macrolet
-                            :environment env))
-(defun parse-lambda-list (lambda-list)
-  ;; returns values:
-  ;;
-  ;;   (required optional restp rest keyp keys allowp auxp aux morep
-  ;;   more-context more-count)
-  ;;
-  (sb!int:parse-lambda-list lambda-list))
-
+;;;; HOST INTEROPERABILITY
 (defun native-environment->context (lexenv)
   (declare (ignore lexenv))
   ;;FIXME
   (make-null-context))
+
 (defun context->native-environment (context)
   (etypecase context
     (null
@@ -133,13 +83,56 @@
                                     (context-parent context))
                           :funs (append macros functions)
                           :vars (append symbol-macros vars))))))
+
+
+;;;; COMPILER UTILITIES
+(defun verify-function-name (thing)
+  "Signal an error if THING is not a valid function name."
+  (assert (sb!int:valid-function-name-p thing)))
+
 (defun globally-special-p (var)
   (eq :special (sb!int:info :variable :kind var)))
+
 (defun globally-constant-p (var)
   (eq :constant (sb!int:info :variable :kind var)))
+
 (defun symbol-macro-p (var)
   (eq :macro (sb!int:info :variable :kind var)))
 
+(defun self-evaluating-p (form)
+  (sb!int:self-evaluating-p form))
+
+(defun fun-name-block-name (fun-name)
+  (sb!int:fun-name-block-name fun-name))
+
+(defun parse-macrolet-binding-form (lambda-list whole body name env)
+  (sb!kernel:parse-defmacro lambda-list
+                            whole
+                            body
+                            name
+                            'macrolet
+                            :environment env))
+
+(defun parse-lambda-list (lambda-list)
+  ;; returns values:
+  ;;
+  ;;   (required optional restp rest keyp keys allowp auxp aux morep
+  ;;   more-context more-count)
+  ;;
+  (sb!int:parse-lambda-list lambda-list))
+
+
+;;;; EFFICIENT FUNCTION ARGUMENT ACCESS
+(declaim (inline get-arg))
+(defun get-arg (i)
+  (sb!c:%more-arg *more* i))
+
+(declaim (inline get-arglist))
+(defun get-arglist ()
+  (multiple-value-list (sb!c:%more-arg-values *more* 0 *argnum*)))
+
+
+;;;; EFFICIENT ACCESS TO GLOBAL FUNCTION DEFINITIONS
 (declaim (inline find-fdefn))
 (defun find-fdefn (function-name)
   (sb!c::fdefinition-object function-name t))
@@ -149,6 +142,7 @@
   (sb!c::fdefn-fun fdefn))
 
 
+;;;; DEBUGGING INFORMATION TRACKING
 (defvar *vcode-form-debug-info-mapping*
   (make-hash-table :test 'eq :weakness :key))
 
@@ -161,6 +155,51 @@
 (defun attach-debug-info (form current-path)
   (setf (vcode-form-debug-info form) current-path))
 
+
+;;;; SOURCE LOCATION TRACKING
+(defvar *source-paths&locations* (make-hash-table :weakness :key
+                                                  :test #'eq
+                                                  :synchronized t))
+
+(defun current-path ()
+  (when (boundp 'sb!c::*current-path*)
+    sb!c::*current-path*))
+
+(defun current-location ()
+  (when (and (current-path)
+             (typep (car (last (current-path)))
+                    '(or fixnum null)))
+    (sb!c::make-definition-source-location)))
+
+(defun source-path (closure)
+  (car (source-path&location closure)))
+
+(defun source-location (closure)
+  (cdr (source-path&location closure)))
+
+(defun source-path&location (closure)
+  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
+    (gethash closure *source-paths&locations*)))
+
+(defun (setf source-path&location) (val closure)
+  (progn ;;sb-ext:with-locked-hash-table (*source-paths&locations*)
+    (setf (gethash closure *source-paths&locations*) val)))
+
+(defun annotate-lambda-with-source (closure current-path source-location)
+  (when source-location
+    ;; XXX It's strange that (car (last sb!c::*current-path*)) can
+    ;; ever be a non-fixnum.  This seemingly occurs only in the
+    ;; context of #. evaluation (where *source-path* etc. are bound
+    ;; but not relevant for the form we are processing).
+    (setf (source-path&location closure) (cons current-path source-location)))
+  closure)
+
+
+;;;; ENTRY POINT WRAPPERS
+;;;
+;;; These wrap %COMPILE-FORM and %PREPARE-FORM to attach debugging
+;;; information to the results.
+;;;
 (defun compile-form (form
                      &optional (mode      *mode*)
                      &aux      (*mode*    :execute)
@@ -170,6 +209,9 @@
                                                (boundp 'sb!c::*current-path*))
                                            (sb!c::source-form-has-path-p form))
                                   (sb!c::ensure-source-path form))))
+  "Compile FORM into VM code in compilation mode MODE.
+
+See %COMPILE-FORM for more detailed documentation."
   (let ((compiled-form (%compile-form form mode)))
     (when (and (current-path) (current-location))
       (attach-debug-info compiled-form (cons (current-path) (current-location))))
@@ -177,6 +219,9 @@
 
 (declaim (ftype (function (*) eval-closure) prepare-form))
 (defun prepare-form (vcode)
+  "Compile VCODE from VM code into a funcallable evaluator for VCODE.
+
+See %PREPARE-FORM for more detailed documentation."
   (let* ((eval-closure (%prepare-form vcode))
          (path&location (vcode-form-debug-info vcode)))
     (setf (source-path&location eval-closure) path&location)

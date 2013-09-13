@@ -2,52 +2,6 @@
 
 (declaim-optimizations)
 
-(declaim (inline call-with-environment))
-(declaim (ftype (function (environment function) *) call-with-environment))
-(defun call-with-environment (env thunk)
-  (funcall thunk env))
-
-(declaim (ftype (function (context function) *) call-with-context))
-(defun call-with-context (context thunk)
-  (let ((*context* context))
-    (declare (special *context*))
-    (funcall thunk)))
-
-(defun maybe-closes-p (context form)
-  "Check whether FORM potentially closes over anything not bound in CONTEXT.
-
-We use this to determine whether environments corresponding to
-children of CONTEXT can be stack-allocated."
-  (declare (ignore context form))
-  ;; FIXME
-  ;;
-  ;; What we really want to do here is macroexpand FORM and have a
-  ;; look at whether there are any potential closures there.  It
-  ;; should be pretty easy to simply check for the mere presence of
-  ;; LAMBDA, SB-INT:NAMED-LAMBDA, FLET, and LABELS.
-  ;;
-  ;; Beyond that, it's tricky.  We mustn't assume that FORM doesn't
-  ;; close over the new enviroment we want to establish just because
-  ;; it doesn't close over one of the new environment's direct lexical
-  ;; variables.  There could be a child environment it closes over,
-  ;; which still means we need to keep the environment on the heap.
-  t)
-
-(defun parse-tagbody-tags-and-bodies (forms)
-  (let ((next-form (gensym))
-        (finishp nil))
-    (loop until finishp
-          collect
-             (progn
-               (unless forms
-                 (setq finishp (null forms)))
-               (let ((tag next-form)
-                     (current-forms (loop for current-form = (pop forms)
-                                          do (setq next-form current-form)
-                                          until (atom current-form)
-                                          collect current-form)))
-                 (cons tag current-forms))))))
-
 (declaim (ftype (function (symbol) eval-closure) prepare-symbol-ref))
 (defun prepare-symbol-ref (var)
   (eval-lambda (env) (%var-ref)
@@ -64,21 +18,6 @@ children of CONTEXT can be stack-allocated."
   (let ((val* (prepare-form val)))
     (eval-lambda (env) (%env-set)
       (setf (environment-value env nesting offset) (funcall val* env)))))
-
-
-(defun body-decls&forms (exprs)
-  (let* ((decl-exprs
-           (loop while (and (consp (first exprs))
-                            (eq 'declare (first (first exprs))))
-                 for expr = (pop exprs)
-                 collect expr))
-         (decls (reduce #'append (mapcar #'rest decl-exprs))))
-    (values decls exprs)))
-
-(defun decl-specials (declaration)
-  (when (eq (first declaration) 'special)
-    (rest declaration)))
-
 
 (declaim (ftype (function ((or symbol list)) eval-closure) prepare-fdef-ref))
 (defun prepare-fdef-ref (function-name)
@@ -145,19 +84,14 @@ children of CONTEXT can be stack-allocated."
                  (funcall (the eval-closure form*) env))
                (funcall (the eval-closure last-form*) env)))))))
 
-(defun assume-special (context var)
-  (unless (or (globally-special-p var)
-              (context-var-special-p context var))
-    (warn 'simple-warning
-          :format-control "Undefined variable: ~S"
-          :format-arguments (list var))))
-
-(defun prevent-constant-modification (var)
-  (when (globally-constant-p var)
-    (warn "~S is a constant and thus can't be set." var)))
-
 (declaim (ftype (function * eval-closure) prepare-lambda))
 (defun prepare-lambda (body name current-path source-location lambda-list doc)
+  "Generate an EVAL-CLOSURE that creates a MINIMALLY-COMPILED-FUNCTION with the supplied parameters.
+
+In the MINIMALLY-COMPILED-FUNCTION, *ENVBOX* gets bound to a box that,
+when the MINIMALLY-COMPILED-FUNCTION is executed, is set to point to
+the environment that corresponds to the call frame for this call
+instance."
   (declare (ignorable name current-path source-location))
   (let ((body* (prepare-progn body)))
     (eval-lambda (env) (%lambda current-path source-location)
@@ -173,6 +107,10 @@ children of CONTEXT can be stack-allocated."
 
 (declaim (ftype (function (*) eval-closure) %prepare-form))
 (defun %prepare-form (form)
+  "Compile the VM code form FORM into an executable EVAL-CLOSURE.
+
+The result is an EVAL-CLOSURE that can be executed by funcalling it,
+passing an ENVIRONMENT object as the argument."
   ;;(declare (optimize speed (safety 0) (space 1) (debug 0)))
   (values
    (cond
@@ -393,6 +331,11 @@ children of CONTEXT can be stack-allocated."
    t))
 
 
+;;;; UTILITY FUNCTIONS
+;;;
+;;; These replace CL:EVAL and CL:LOAD.  They are mainly suitable for
+;;; debugging the evaluator or for use in implementations other than
+;;; SBCL.
 (defun eval2 (form &optional environment)
   (let ((context (if environment
                      (native-environment->context environment)
@@ -408,8 +351,8 @@ children of CONTEXT can be stack-allocated."
             for form = (read file nil eof nil)
             until (eq form eof)
             when (listp form)
-            do (format t "~&; (~S~:[~; ~S~:[~; ...~]~])"
-                       (car form) (cdr form) (cadr form) (cddr form))
+              do (format t "~&; (~S~:[~; ~S~:[~; ...~]~])"
+                         (car form) (cdr form) (cadr form) (cddr form))
             do (funcall
                 (prepare-form
                  (with-context (make-null-context)
@@ -418,6 +361,8 @@ children of CONTEXT can be stack-allocated."
       (with-open-file (in file)
         (load2 in))))
 
+
+;;;; EXAMPLES
 #+(or)
 (call-with-environment (make-null-environment)
   (prepare-form (with-context (make-null-context)

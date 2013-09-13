@@ -67,6 +67,25 @@
                                    (make-array (list size)))))
   (%make-environment debug-record parent data))
 
+(declaim (inline call-with-environment))
+(declaim (ftype (function (environment function) *) call-with-environment))
+(defun call-with-environment (env thunk)
+  (funcall thunk env))
+
+;;; ENVIRONMENT accessors
+(declaim (inline environment-value))
+(defun environment-value (env nesting offset)
+  (dotimes (i (the fixnum nesting))
+    (setq env (environment-parent env)))
+  (svref (environment-data env) offset))
+
+(declaim (inline (setf environment-value)))
+(defun (setf environment-value) (val env nesting offset)
+  (dotimes (i (the fixnum nesting))
+    (setq env (environment-parent env)))
+  (setf (svref (environment-data env) offset) val))
+
+
 
 ;;;; CONTEXTS
 ;;;
@@ -82,6 +101,12 @@
 
 (defun lexical-with-nesting (lexical nesting)
   (make-lexical :name (lexical-name lexical) :offset (lexical-offset lexical) :nesting nesting))
+
+(declaim (ftype (function (context function) *) call-with-context))
+(defun call-with-context (context thunk)
+  (let ((*context* context))
+    (declare (special *context*))
+    (funcall thunk)))
 
 
 ;;; The CONTEXT structure contains all information tracked by the
@@ -121,6 +146,7 @@
 
 (defun make-null-context ()
   (make-context nil))
+
 (defun make-lexical-context (context)
   (let ((new-context (make-context context)))
     (setf (context-env-hop new-context) t)
@@ -131,11 +157,14 @@
 ;;; Most of the functions that augment a context return a new context
 ;;; with the existing one as the parent.  Exceptions are marked with a
 ;;; ! in the name (such as CONTEXT-ADD-SPECIAL!).
+
+;;; Evaluation environment
 (defun context-evaluation-environment (context)
   (let ((parent (context-parent context)))
     (or (context-%evaluation-environment context)
         (and parent (context-evaluation-environment parent))
         (make-null-environment))))
+
 (defun context-add-evaluation-bindings (context bindings)
   (let* ((new-context (make-context context))
          (evlctx (context-evaluation-context context))
@@ -150,11 +179,15 @@
     (setf (context-%evaluation-context new-context)
           (context-add-env-lexicals evlctx (mapcar #'car bindings)))
     new-context))
+
 (defun context-evaluation-context (context)
   (let ((parent (context-parent context)))
     (or (context-%evaluation-context context)
         (and parent (context-evaluation-context parent))
         (make-null-context))))
+
+
+;;; Macros and symbol macros
 (defun context-find-symbol-macro (context symmac)
   "If a symbol macro called SYMMAC exists in CONTEXT, return a singleton list of its expansion, otherwise return NIL."
   (let ((parent (context-parent context)))
@@ -166,6 +199,7 @@
          (or (let ((record? (assoc (the symbol symmac) (context-symbol-macros context))))
                (and record? (list (cdr record?))))
              (and parent (context-find-symbol-macro parent symmac))))))
+
 (defun context-find-macro (context mac)
   "If a macro called MAC exists in CONTEXT, return a singleton list of its expander function, otherwise return NIL."
   (let ((parent (context-parent context)))
@@ -177,34 +211,48 @@
                          (context-macros context)
                          :test #'equal))
              (and parent (context-find-macro parent mac))))))
+
 (defun context-add-symbol-macros (context bindings)
   (let ((new-context (make-context context)))
     (setf (context-symbol-macros new-context)
           (append bindings (context-symbol-macros new-context)))
     new-context))
+
 (defun context-add-macros (context bindings)
   (let ((new-context (make-context context)))
     (setf (context-macros new-context)
           (append bindings (context-macros new-context)))
     new-context))
+
+
+;;; Lexical information
 (defun context-var-symbol-macro-p (context var)
   (and (not (find var (context-specials context) :test #'equal))
        (not (find var (context-lexicals context) :key #'lexical-name :test #'equal))
        (or (find var (context-symbol-macros context) :key #'car :test #'equal)
            (and (context-parent context)
                 (context-var-symbol-macro-p (context-parent context) var)))))
+
 (defun context-var-lexical-p (context var)
   (and (not (find var (context-specials context) :test #'equal))
        (not (find var (context-symbol-macros context) :key #'car :test #'equal))
        (or (find var (context-lexicals context) :key #'lexical-name :test #'equal)
            (and (context-parent context)
                 (context-var-lexical-p (context-parent context) var)))))
+
 (defun context-var-special-p (context var)
   (and (not (find var (context-lexicals context) :key #'lexical-name :test #'equal))
        (not (find var (context-symbol-macros context) :key #'car :test #'equal))
        (or (find var (context-specials context) :test #'equal)
            (and (context-parent context)
                 (context-var-special-p (context-parent context) var)))))
+
+(declaim (ftype (function (context (or symbol list)) *) local-function-p))
+(defun local-function-p (context f)
+  (context-find-function context f))
+
+
+;;; Lexical and special variables
 (defun context-add-env-lexicals (context vars)
   ;; Open a new variable context, set env-hop to true.
   (let ((new-context (make-context context)))
@@ -214,25 +262,41 @@
                 for v in vars
                 collect (make-env-lexical v i)))
     new-context))
+
 (defun context-add-env-lexical! (context var)
   (push (make-env-lexical var (length (context-lexicals context)))
         (context-lexicals context))
   (values))
+
 (defun context-add-specials (context vars)
   (let ((new-context (make-context context)))
     (setf (context-specials new-context) vars)
     new-context))
+
 (defun context-add-special! (context var)
   (push var (context-specials context))
   (values))
+
 (defun context-add-env-functions (context fs)
   (context-add-env-lexicals context (mapcar (lambda (x) `(function ,x)) fs)))
+
+
+(defun context-find-lexical (context var)
+  (find var (context-collect-lexicals context) :key #'lexical-name :test #'equal))
+
+(declaim (ftype (function (context (or symbol list)) *) context-find-function))
+(defun context-find-function (context f)
+  (context-find-lexical context `(function ,f)))
+
+
+;;; Utilities
 (defun context-collect (context f)
   "Walk the ancestor chain of CONTEXT and return all F of the contexts, appended together.
 
 This is effectively a MAPCAN on the ancestor chain of CONTEXT."
   (let ((parent (context-parent context)))
     (append (funcall f context) (and parent (context-collect parent f)))))
+
 (defun context-collect-lexicals (context)
   "Find all LEXICALs bound in CONTEXT and all of its ancestors."
   ;; In order to make the returned information correct, we need to
@@ -246,28 +310,5 @@ This is effectively a MAPCAN on the ancestor chain of CONTEXT."
         nconc (mapcar #'(lambda (record) (lexical-with-nesting record env-level))
                       records)
         when (context-env-hop context)
-          do (incf env-level)
+        do (incf env-level)
         do (setq context (context-parent context))))
-(defun context-find-lexical (context var)
-  (find var (context-collect-lexicals context) :key #'lexical-name :test #'equal))
-(declaim (ftype (function (context (or symbol list)) *) context-find-function))
-(defun context-find-function (context f)
-  (context-find-lexical context `(function ,f)))
-
-(declaim (ftype (function (context (or symbol list)) *) local-function-p))
-(defun local-function-p (context f)
-  (context-find-function context f))
-
-
-;;;; ENVIRONMENT accessors
-(declaim (inline environment-value))
-(defun environment-value (env nesting offset)
-  (dotimes (i (the fixnum nesting))
-    (setq env (environment-parent env)))
-  (svref (environment-data env) offset))
-
-(declaim (inline (setf environment-value)))
-(defun (setf environment-value) (val env nesting offset)
-  (dotimes (i (the fixnum nesting))
-    (setq env (environment-parent env)))
-  (setf (svref (environment-data env) offset) val))
