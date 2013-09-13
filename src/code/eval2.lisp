@@ -274,9 +274,15 @@ passing an ENVIRONMENT object as the argument."
             (warn "DECLARE in form context.")
             (prepare-nil))
            ((load-time-value)
-            (let ((load-form (cadr form)))
-              ;; FIXME?
-              (prepare-form load-form)))
+            (destructuring-bind (load-form) (rest form)
+              (let ((thing
+                      (call-with-environment
+                       (make-null-environment)
+                       (prepare-form
+                        (with-context (make-null-context) (compile-form load-form))))))
+                (eval-lambda (env) (load-time-value)
+                  (declare (ignore env))
+                  thing))))
            ((multiple-value-call)
             (destructuring-bind (f &rest argforms) (rest form)
               (let ((f* (prepare-form f))
