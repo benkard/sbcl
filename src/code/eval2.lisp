@@ -2,6 +2,19 @@
 
 (declaim-optimizations)
 
+;;;; EVAL-CLOSURE PREPARATION
+;;;
+;;; The PREPARE-{...} functions generate EVAL-CLOSUREs from VM code
+;;; forms.  The resulting eval-closure is funcallable and takes an
+;;; ENVIRONMENT object as its only argument.
+;;;
+;;; The usual way of executing minimally compiled code is thus:
+;;;
+;;;   Lisp source  ---COMPILE-FORM---> VM code
+;;;   VM code      ---PREPARE-FORM---> eval-closure
+;;;   eval-closure ---FUNCALL--->      result
+;;;
+
 (declaim (ftype (function (symbol) eval-closure) prepare-symbol-ref))
 (defun prepare-symbol-ref (var)
   (eval-lambda (env) (%var-ref)

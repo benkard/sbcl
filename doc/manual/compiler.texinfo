@@ -1110,19 +1110,51 @@ may be transformed into a different function call (as in the last
 example) or compiled as @emph{static call}. Static function call uses
 a more efficient calling convention that forbids redefinition.
 
-@node  Interpreter
+@node  Minimal Compiler
 @comment  node-name,  next,  previous,  up
-@section Interpreter
-@cindex Interpreter
+@section Minimal Compiler
+@cindex Minimal Compiler
 @findex @cl{eval}
 @vindex @sbext{@earmuffs{evaluator-mode}}
 
-By default SBCL implements @code{eval} by calling the native code
+By default, SBCL implements @code{eval} by calling the native code
 compiler.
 
-SBCL also includes an interpreter for use in special cases where using
-the compiler is undesirable, for example due to compilation overhead.
-Unlike in some other Lisp implementations, in SBCL interpreted code is
-not safer or more debuggable than compiled code.
+SBCL also includes a lightweight closure compiler for use in special
+cases where using the full compiler is undesirable, for example due to
+compilation overhead.
+
+The minimal compiler works by macroexpanding the Lisp code and translating
+it into closures for execution.
+
+Minimally compiled code is not safer or more debuggable than compiled
+code, and suffers from a number of limitations.
 
 @include var-sb-ext-star-evaluator-mode-star.texinfo
+
+@node  Limitations
+@comment  node-name,  next,  previous,  up
+@subsection Limitations
+@cindex Limitations, minimal compiler
+
+@itemize
+@item
+The statistical profiler is unable to recognize minimally compiled
+frames.  Therefore, when calling minimally compiled code, you will see
+internal @code{eval-closure} calls corresponding to the minimally
+compiled source instructions.
+
+If you want to profile your code, it is best to compile it to native
+code beforehand.
+
+@item
+There is currently no support for @code{sb-cltl2:compiler-let}.
+
+@item
+There is no support for single stepping of minimally compiled code in
+the debugger.  If you attempt to single-step a minimally compiled
+expression, you will end up single-stepping the internals of the minimal
+compiler.  This may work by luck for some simple expressions, but it's
+best to compile to native code with a high @code{debug} setting before
+trying to use the stepper.
+@end itemize
