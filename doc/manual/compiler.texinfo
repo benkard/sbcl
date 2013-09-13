@@ -16,7 +16,7 @@ separate that they have their own chapter, @ref{Efficiency}.
 * Compiler Policy::             
 * Compiler Errors::             
 * Open Coding and Inline Expansion::  
-* Interpreter::
+* Minimal Compiler::
 @end menu
 
 @node  Diagnostic Messages
@@ -1110,32 +1110,37 @@ may be transformed into a different function call (as in the last
 example) or compiled as @emph{static call}. Static function call uses
 a more efficient calling convention that forbids redefinition.
 
-@node  Minimal Compiler
+@node  Interpreter and Minimal Compiler
 @comment  node-name,  next,  previous,  up
-@section Minimal Compiler
-@cindex Minimal Compiler
+@section Interpreter and Minimal Compiler
+@cindex Interpreter and Minimal Compiler
 @findex @cl{eval}
 @vindex @sbext{@earmuffs{evaluator-mode}}
+
+@menu
+* Limitations of Minimally Compiled Code::
+@end menu
 
 By default, SBCL implements @code{eval} by calling the native code
 compiler.
 
-SBCL also includes a lightweight closure compiler for use in special
-cases where using the full compiler is undesirable, for example due to
-compilation overhead.
+SBCL also includes an interpreter and a lightweight closure compiler for
+use in special cases where using the full compiler is undesirable, for
+example due to compilation overhead.
 
-The minimal compiler works by macroexpanding the Lisp code and translating
-it into closures for execution.
+The minimal compiler works by macroexpanding the Lisp code and
+translating it into closures for execution.
 
-Minimally compiled code is not safer or more debuggable than compiled
-code, and suffers from a number of limitations.
+Neither interpreted nor minimally compiled code is safer or more
+debuggable than compiled code.  In addition, minimally compiled code
+suffers from a number of limitations.
 
 @include var-sb-ext-star-evaluator-mode-star.texinfo
 
-@node  Limitations
+@node  Limitations of Minimally Compiled Code
 @comment  node-name,  next,  previous,  up
-@subsection Limitations
-@cindex Limitations, minimal compiler
+@subsection Limitations of Minimally Compiled Code
+@cindex Limitations, Interpreter and Minimal Compiler
 
 @itemize
 @item

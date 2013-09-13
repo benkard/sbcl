@@ -1347,12 +1347,15 @@
 
 ;;; Default evaluator mode (interpeter / compiler)
 
-(declaim (type (member :compile #!+sb-eval :interpret) *evaluator-mode*))
+(declaim (type (member :compile #!+sb-eval :interpret #!+sb-eval :minimally-compile)
+               *evaluator-mode*))
 (defparameter *evaluator-mode* :compile
   #!+sb-doc
   "Toggle between different evaluator implementations. If set to :COMPILE,
 an implementation of EVAL that calls the compiler will be used. If set
-to :INTERPRET, an interpreter will be used.")
+to :INTERPRET, an interpreter will be used. If set
+to :MINIMALLY-COMPILE, a lightweight, non-native-code compiler will be
+used.")
 
 ;;; Helper for making the DX closure allocation in macros expanding
 ;;; to CALL-WITH-FOO less ugly.

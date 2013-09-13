@@ -269,10 +269,9 @@
 #!+sb-eval
 (defun eval-in-lexenv (exp lexenv)
   (ccase sb!ext:*evaluator-mode*
-    #+(or)
     ((:interpret)
      (sb-impl::simple-eval-in-lexenv exp lexenv))
-    ((:interpret)
+    ((:minimally-compile)
      (sb!eval2:call-with-environment
       (sb!eval2:make-null-environment)
       (sb!eval2:prepare-form
