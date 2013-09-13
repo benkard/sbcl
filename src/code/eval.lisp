@@ -270,7 +270,7 @@
 (defun eval-in-lexenv (exp lexenv)
   (ccase sb!ext:*evaluator-mode*
     ((:interpret)
-     (sb-impl::simple-eval-in-lexenv exp lexenv))
+     (sb!eval:eval-in-native-environment exp lexenv))
     ((:minimally-compile)
      (sb!eval2:call-with-environment
       (sb!eval2:make-null-environment)
@@ -280,11 +280,11 @@
         (lambda ()
           (sb!eval2:compile-form exp :execute))))))
     ((:compile)
-     (sb!eval:eval-in-native-environment exp lexenv))))
+     (simple-eval-in-lexenv exp lexenv))))
 
 #!-sb-eval
 (defun eval-in-lexenv (exp lexenv)
-  (sb-eval:eval-in-native-environment exp lexenv))
+  (simple-eval-in-lexenv exp lexenv))
 
 (defun eval (original-exp)
   #!+sb-doc
