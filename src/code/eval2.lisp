@@ -96,13 +96,12 @@ instance."
   (let ((body* (prepare-progn body)))
     (eval-lambda (env) (%lambda current-path source-location)
       (let (;; ENVBOX holds a box that points to the lambda's body
-            ;; environment.  It is set by the body %LET through the
-            ;; use of %SET-ENVBOX.
+            ;; environment.  It is set by the body %LET.
             ;;
             ;; This is useful mainly for debugging purposes.
             (envbox (make-array '())))
         (interpreted-lambda (name current-path source-location lambda-list doc)
-          (let ((*envbox* envbox))
+          (let ((*env-box* envbox))
             (funcall body* env)))))))
 
 (declaim (ftype (function (*) eval-closure) %prepare-form))
@@ -133,13 +132,13 @@ passing an ENVIRONMENT object as the argument."
                      ;;(declare (notinline %make-environment))
                      (with-indefinite-extent-environment (env debug-info env varnum)
                        (when set-box-p
-                         (setf (aref (the (simple-array t ()) *envbox*)) env))
+                         (setf (aref (the (simple-array t ()) *env-box*)) env))
                        (funcall body* env))))
                   ((:dynamic-extent)
                    (eval-lambda (env) (%with-environment)
                      (with-dynamic-extent-environment (env debug-info env varnum)
                        (when set-box-p
-                         (setf (aref (the (simple-array t ()) *envbox*)) env))
+                         (setf (aref (the (simple-array t ()) *env-box*)) env))
                        (funcall body* env))))))))
            ((%get-arg)
             (destructuring-bind (i) (rest form)
