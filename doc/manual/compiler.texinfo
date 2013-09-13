@@ -1128,12 +1128,13 @@ SBCL also includes an interpreter and a lightweight closure compiler for
 use in special cases where using the full compiler is undesirable, for
 example due to compilation overhead.
 
-The minimal compiler works by macroexpanding the Lisp code and
-translating it into closures for execution.
+The interpreter works by evaluating source code directly.  The minimal
+compiler works by fully macroexpanding the Lisp code and translating it
+into closures for execution.
 
-Neither interpreted nor minimally compiled code is safer or more
-debuggable than compiled code.  In addition, minimally compiled code
-suffers from a number of limitations.
+Unlike in some other implementations, neither interpreted nor minimally
+compiled code is safer or more debuggable than compiled code.  In
+addition, minimally compiled code suffers from a number of limitations.
 
 @include var-sb-ext-star-evaluator-mode-star.texinfo
 
