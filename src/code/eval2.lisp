@@ -196,7 +196,7 @@ passing an ENVIRONMENT object as the argument."
                   (when (and (> arg-count positional-num)
                              (oddp (- arg-count positional-num)))
                     (let ((rest (funcall
-                                 (prepare-form `(%arglistfrom ,positional-num))
+                                 (prepare-form `(%arglist-from ,positional-num))
                                  env)))
                       (error 'simple-program-error
                              :format-control "odd number of keyword arguments: ~S"
