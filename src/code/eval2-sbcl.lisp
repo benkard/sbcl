@@ -52,9 +52,35 @@
 
 ;;;; HOST INTEROPERABILITY
 (defun native-environment->context (lexenv)
-  (declare (ignore lexenv))
-  ;;FIXME
-  (make-null-context))
+  (check-type lexenv sb!c::lexenv)
+  (let ((native-funs (sb!c::lexenv-funs lexenv))
+        (native-vars (sb!c::lexenv-vars lexenv)))
+    ;; check taken from SB!EVAL::MAKE-ENV-FROM-NATIVE-ENVIRONMENT
+    (flet ((is-macro (thing)
+             (and (consp thing) (eq (car thing) 'sb!sys:macro))))
+      (when (or (sb!c::lexenv-blocks lexenv)
+                (sb!c::lexenv-cleanup lexenv)
+                (sb!c::lexenv-lambda lexenv)
+                (sb!c::lexenv-tags lexenv)
+                (sb!c::lexenv-type-restrictions lexenv)
+                (find-if-not #'is-macro native-funs :key #'cdr)
+                (find-if-not #'is-macro native-vars :key #'cdr))
+        (error 'compiler-environment-too-complex-error
+               :format-control
+               "~@<Lexical environment is too complex to evaluate in: ~S~:@>"
+               :format-arguments
+               (list lexenv))))
+    (let ((context
+            (make-null-context))
+          (macros
+            (loop for (name _ . expander) in native-funs
+                  collect (cons name expander)))
+          (symbol-macros
+            (loop for (name _ . form) in native-vars
+                  collect (cons name form))))
+      (setf (context-macros context) macros
+            (context-symbol-macros context) symbol-macros)
+      context)))
 
 (defun context->native-environment (context)
   (etypecase context
@@ -63,10 +89,10 @@
     (context
      (let ((macros
              (loop for (name . expander) in (context-macros context)
-                   collect `(,name . (sb!c::macro . ,expander))))
+                   collect `(,name . (sb!sys:macro . ,expander))))
            (symbol-macros
              (loop for (name . form) in (context-symbol-macros context)
-                   collect `(,name . (sb!c::macro . ,form))))
+                   collect `(,name . (sb!sys:macro . ,form))))
            (functions
              (loop for lexical in (context-lexicals context)
                    for name = (lexical-name lexical)
