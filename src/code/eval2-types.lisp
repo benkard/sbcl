@@ -21,7 +21,9 @@
 (defstruct (debug-record (:constructor
                              make-debug-record
                              (context &optional (lambda-list :none) function-name))
-                         #+(or)   ;for debugging purposes
+                         #+(or)   ;uncomment this if you want to make
+                                  ;VM code more human-readable for
+                                  ;debugging purposes
                          (:print-function (lambda (object stream foo)
                                             (declare (ignore object foo))
                                             (format stream "#<DEBUG-RECORD>"))))
