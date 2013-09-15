@@ -84,6 +84,9 @@ children of CONTEXT can be stack-allocated."
   ;; it doesn't close over one of the new environment's direct lexical
   ;; variables.  There could be a child environment it closes over,
   ;; which still means we need to keep the environment on the heap.
+  ;;
+  ;; Since this function is used for optimization purposes only, it's
+  ;; okay to just be conservative and return T here for now.
   t)
 
 (defun body-decls&forms (exprs)

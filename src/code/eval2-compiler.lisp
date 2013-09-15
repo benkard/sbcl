@@ -370,7 +370,6 @@ Do not call this function directly.  Call COMPILE-FORM instead."
   (values
    (cond
      ((self-evaluating-p form)
-      ;;FIXME load forms?
       `',form)
      (t
       (etypecase form
