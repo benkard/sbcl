@@ -589,7 +589,7 @@ Do not call this function directly.  Call COMPILE-FORM instead."
              (destructuring-bind (&rest exprs) (rest form)
                (with-parsed-body (body specials) exprs
                  (with-context (context-add-specials *context* specials)
-                   (compile-progn body)))))
+                   (compile-progn body mode)))))
             ((multiple-value-setq)
              (destructuring-bind (vars values-form) (rest form)
                (if vars
