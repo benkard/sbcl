@@ -88,7 +88,6 @@
   (setf (svref (environment-data env) offset) val))
 
 
-
 ;;;; CONTEXTS
 ;;;
 ;;; A LEXICAL is a compile-time record containing information on how
@@ -153,6 +152,7 @@
   (let ((new-context (make-context context)))
     (setf (context-env-hop new-context) t)
     new-context))
+
 
 ;;;; CONTEXT accessors
 ;;;

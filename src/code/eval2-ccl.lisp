@@ -3,11 +3,6 @@
 (define-condition simple-program-error (ccl::simple-program-error)
   ())
 
-#+(or)
-(setf (find-class 'simple-program-error)
-      (find-class 'ccl::simple-program-error))
-
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (pushnew 'ccl:compiler-let *impl-compiler-lets*)
   (pushnew 'ccl:nfunction *impl-named-function-syms*))
@@ -15,7 +10,6 @@
 
 (defun verify-function-name (thing)
   (assert (ccl::valid-function-name-p thing)))
-
 
 (defmacro eval-lambda (lambda-list (&optional kind current-path source-loc) &body body)
   (declare (ignore current-path source-loc))
