@@ -4723,7 +4723,7 @@
 
 ;; win32 is very specific about the order in which catch blocks
 ;; must be allocated on the stack
-(with-test (:name :bug-121581169)
+(with-test (:name :bug-1072739)
   (let ((f (compile nil
                     `(lambda ()
                        (STRING=
@@ -4822,3 +4822,78 @@
                                y))))
               (list (string 'list))
               (list "lisT")))))
+
+(with-test (:name (restart-case optimize speed compiler-note))
+  (handler-bind ((compiler-note #'error))
+    (compile nil '(lambda ()
+                   (declare (optimize speed))
+                   (restart-case () (c ()))))
+    (compile nil '(lambda ()
+                   (declare (optimize speed))
+                   (let (x)
+                     (restart-case (setf x (car (compute-restarts)))
+                       (c ()))
+                     x)))))
+
+(with-test (:name :copy-more-arg
+            :fails-on '(not (or :x86 :x86-64)))
+  ;; copy-more-arg might not copy in the right direction
+  ;; when there are more fixed args than stack frame slots,
+  ;; and thus end up splatting a single argument everywhere.
+  ;; Fixed on x86oids only, but other platforms still start
+  ;; their stack frames at 8 slots, so this is less likely
+  ;; to happen.
+  (let ((limit 33))
+    (labels ((iota (n)
+               (loop for i below n collect i))
+             (test-function (function skip)
+               ;; function should just be (subseq x skip)
+               (loop for i from skip below (+ skip limit) do
+                 (let* ((values (iota i))
+                        (f (apply function values))
+                        (subseq (subseq values skip)))
+                   (assert (equal f subseq)))))
+             (make-function (n)
+               (let ((gensyms (loop for i below n collect (gensym))))
+                 (compile nil `(lambda (,@gensyms &rest rest)
+                                 (declare (ignore ,@gensyms))
+                                 rest)))))
+      (dotimes (i limit)
+        (test-function (make-function i) i)))))
+
+(with-test (:name :apply-aref)
+  (flet ((test (form)
+           (let (warning)
+             (handler-bind ((warning (lambda (c) (setf warning c))))
+               (compile nil `(lambda (x y) (setf (apply #'sbit x y) 10))))
+             (assert (not warning)))))
+    (test `(lambda (x y) (setf (apply #'aref x y) 21)))
+    (test `(lambda (x y) (setf (apply #'bit x y) 1)))
+    (test `(lambda (x y) (setf (apply #'sbit x y) 0)))))
+
+(with-test (:name :warn-on-the-values-constant)
+  (multiple-value-bind (fun warnings-p failure-p)
+      (compile nil
+               ;; The compiler used to elide this test without
+               ;; noting that the type demands multiple values.
+               '(lambda () (the (values fixnum fixnum) 1)))
+    (declare (ignore warnings-p))
+    (assert (functionp fun))
+    (assert failure-p)))
+
+;; quantifiers shouldn't cons themselves.
+(with-test (:name :quantifiers-no-consing)
+  (let ((constantly-t (lambda (x) x t))
+        (constantly-nil (lambda (x) x nil))
+        (list (make-list 1000 :initial-element nil))
+        (vector (make-array 1000 :initial-element nil)))
+    (macrolet ((test (quantifier)
+                 (let ((function (make-symbol (format nil "TEST-~A" quantifier))))
+                   `(flet ((,function (function sequence)
+                             (,quantifier function sequence)))
+                      (ctu:assert-no-consing (,function constantly-t list))
+                      (ctu:assert-no-consing (,function constantly-nil vector))))))
+      (test some)
+      (test every)
+      (test notany)
+      (test notevery))))

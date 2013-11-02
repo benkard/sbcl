@@ -1226,10 +1226,6 @@ possibly temporariliy, because it might be used internally."
                "SET-FLOATING-POINT-MODES"
                "WITH-FLOAT-TRAPS-MASKED"
 
-               ;; compatibility hacks for old-style CMU CL data formats
-               "UNIX-ENVIRONMENT-CMUCL-FROM-SBCL"
-               "UNIX-ENVIRONMENT-SBCL-FROM-CMUCL"
-
                ;; a sort of quasi-unbound tag for use in hash tables
                "+EMPTY-HT-SLOT+"
 
@@ -1763,7 +1759,8 @@ is a good idea, but see SB-SYS re. blurring of boundaries."
                "TYPE-SINGLE-VALUE-P" "TYPE-SPECIFIER" "TYPE-UNION"
                "TYPE/=" "TYPE=" "TYPES-EQUAL-OR-INTERSECT"
                "UNBOUND-SYMBOL-ERROR" "UNBOXED-ARRAY"
-               "UNDEFINED-FUN-ERROR" "UNION-TYPE" "UNION-TYPE-P"
+               "UNDEFINED-FUN-ERROR" "UNDEFINED-ALIEN-FUN-ERROR"
+               "UNION-TYPE" "UNION-TYPE-P"
                "UNION-TYPE-TYPES" "UNKNOWN-ERROR"
                "UNKNOWN-KEY-ARG-ERROR" "UNKNOWN-TYPE" "UNKNOWN-TYPE-P"
                "UNKNOWN-TYPE-SPECIFIER" "UNSEEN-THROW-TAG-ERROR"
@@ -1929,9 +1926,11 @@ is a good idea, but see SB-SYS re. blurring of boundaries."
 
                ;; symbols from former SB!CONDITIONS
                "*HANDLER-CLUSTERS*" "*RESTART-CLUSTERS*"
-               "*CONDITION-RESTARTS*" "CASE-FAILURE"
-               "NAMESTRING-PARSE-ERROR" "NAMESTRING-PARSE-ERROR-OFFSET"
-               "MAKE-RESTART" "COERCE-TO-CONDITION"
+
+               "CASE-FAILURE" "NAMESTRING-PARSE-ERROR"
+               "NAMESTRING-PARSE-ERROR-OFFSET"
+               "MAKE-RESTART" "RESTART-ASSOCIATED-CONDITIONS"
+               "COERCE-TO-CONDITION"
 
                "ALLOCATE-CONDITION"
 
@@ -1943,6 +1942,7 @@ is a good idea, but see SB-SYS re. blurring of boundaries."
                "CONDITION-SLOT-INITARGS"
                "CONDITION-SLOT-INITFORM"
                "CONDITION-SLOT-INITFORM-P"
+               "CONDITION-SLOT-INITFUNCTION"
                "CONDITION-SLOT-NAME" "CONDITION-SLOT-READERS"
                "CONDITION-SLOT-WRITERS"
 
@@ -2016,9 +2016,8 @@ is a good idea, but see SB-SYS re. blurring of boundaries."
                "STRING<*" "STRING/=*" "%SVSET"
                "%SP-STRING-COMPARE" "%SETNTH" "%SETELT"
                "%SET-ROW-MAJOR-AREF" "%SET-FILL-POINTER"
-               "%SET-FDEFINITION" "%SCHARSET" "%SBITSET"
-               "%RPLACD" "%RPLACA" "%PUT" "%CHARSET" "%BITSET"
-               "%ASET"))
+               "%SET-FDEFINITION" "%SCHARSET"
+               "%RPLACD" "%RPLACA" "%PUT" "%CHARSET"))
 
    #s(sb-cold:package-data
       :name "SB!THREAD"
@@ -2380,6 +2379,7 @@ SB-KERNEL) have been undone, but probably more remain."
                "*PERIODIC-POLLING-PERIOD*"
                "*RUNTIME-DLHANDLE*"
                "*SHARED-OBJECTS*"
+               #!-sb-dynamic-core
                "*STATIC-FOREIGN-SYMBOLS*"
                "*STDERR*" "*STDIN*"
                "*STDOUT*"

@@ -2075,4 +2075,48 @@
   (defmethod sb-mop:validate-superclass ((x bug-309076-class) (y standard-class)) t)
   (assert (typep (make-instance 'bug-309076-class) 'bug-309076-class)))
 
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require 'sb-cltl2)
+  (defmethod b ()))
+
+(defmacro macro ()
+  (let ((a 20))
+    (declare (special a))
+    (assert
+     (=
+      (funcall
+       (compile nil
+                (sb-mop:make-method-lambda
+                 #'b
+                 (find-method #'b () ())
+                 '(lambda () (declare (special a)) a)
+                 nil))
+       '(1) ())
+      20))))
+
+(with-test (:name :make-method-lambda-leakage)
+  ;; lambda list of X leaks into the invocation of make-method-lambda
+  ;; during code-walking performed by make-method-lambda invoked by
+  ;; DEFMETHOD
+  (sb-cltl2:macroexpand-all '(defmethod x (a) (macro))))
+
+(with-test (:name (:defmethod-undefined-function :bug-503095))
+  (flet ((test-load (file)
+           (let (implicit-gf-warning)
+             (handler-bind
+                 ((sb-ext:implicit-generic-function-warning
+                    (lambda (x)
+                      (setf implicit-gf-warning x)
+                      (muffle-warning x)))
+                  ((or warning error) #'error))
+               (load file))
+             (assert implicit-gf-warning))))
+    (multiple-value-bind (fasl warnings errorsp) (compile-file "bug-503095.lisp")
+      (unwind-protect
+           (progn (assert (and fasl (not warnings) (not errorsp)))
+                  (test-load fasl))
+        (and fasl (delete-file fasl))))
+    (test-load "bug-503095-2.lisp")))
+
 ;;;; success

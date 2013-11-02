@@ -24,7 +24,9 @@
 ;;; as opposed to C's "extern"). The table contains symbols known at
 ;;; the time that the program was built, but not symbols defined in
 ;;; object files which have been loaded dynamically since then.
+#!-sb-dynamic-core
 (declaim (type hash-table *static-foreign-symbols*))
+#!-sb-dynamic-core
 (defvar *static-foreign-symbols* (make-hash-table :test 'equal))
 
 (declaim
@@ -38,7 +40,8 @@
 (defun find-foreign-symbol-address (name)
   "Returns the address of the foreign symbol NAME, or NIL. Does not enter the
 symbol in the linkage table, and never returns an address in the linkage-table."
-  (or (find-foreign-symbol-in-table name *static-foreign-symbols*)
+  (or #!-sb-dynamic-core
+      (find-foreign-symbol-in-table name *static-foreign-symbols*)
       (find-dynamic-foreign-symbol-address name)))
 
 (defun foreign-symbol-address (name &optional datap)
@@ -127,11 +130,10 @@ if the symbol isn't found."
     (when (<= sb!vm:linkage-table-space-start
               addr
               sb!vm:linkage-table-space-end)
-      (dohash ((name-and-datap info) *linkage-info* :locked t)
-        (let ((table-addr (linkage-info-address info)))
-          (when (and (<= table-addr addr)
-                     (< addr (+ table-addr sb!vm:linkage-table-entry-size)))
-            (return-from sap-foreign-symbol (car name-and-datap))))))
+      (dohash ((name-and-datap table-addr) *linkage-info* :locked t)
+        (when (and (<= table-addr addr)
+                   (< addr (+ table-addr sb!vm:linkage-table-entry-size)))
+          (return-from sap-foreign-symbol (car name-and-datap)))))
     #!+os-provides-dladdr
     (with-alien ((info (struct dl-info
                                (filename c-string)
@@ -163,9 +165,7 @@ if the symbol isn't found."
   (loop for table-address from sb!vm::linkage-table-space-start
           by sb!vm::linkage-table-entry-size
           and reference in sb!vm::*required-runtime-c-symbols*
-        do (setf (gethash reference *linkage-info*)
-                 (make-linkage-info :datap (cdr reference)
-                      :address table-address)))
+        do (setf (gethash reference *linkage-info*) table-address))
   #!+os-provides-dlopen
   (setf *runtime-dlhandle* (dlopen-or-lose))
   #!+os-provides-dlopen

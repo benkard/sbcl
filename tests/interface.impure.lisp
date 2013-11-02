@@ -30,61 +30,70 @@
 (assert (string= (documentation #'(setf foo) 'function)
                  "(setf foo) documentation"))
 
+(with-test (:name :disassemble)
 ;;; DISASSEMBLE shouldn't fail on closures or unpurified functions
-(defun disassemble-fun (x) x)
-(disassemble 'disassemble-fun)
+  (defun disassemble-fun (x) x)
+  (disassemble 'disassemble-fun)
 
-(let ((x 1)) (defun disassemble-closure (y) (if y (setq x y) x)))
-(disassemble 'disassemble-closure)
+  (let ((x 1)) (defun disassemble-closure (y) (if y (setq x y) x)))
+  (disassemble 'disassemble-closure)
 
-#+sb-eval
-(progn
-  ;; Nor should it fail on interpreted functions
-  (let ((sb-ext:*evaluator-mode* :interpret))
-    (eval `(defun disassemble-eval (x) x))
-    (disassemble 'disassemble-eval))
+  #+sb-eval
+  (progn
+    ;; Nor should it fail on interpreted functions
+    (let ((sb-ext:*evaluator-mode* :interpret))
+      (eval `(defun disassemble-eval (x) x))
+      (disassemble 'disassemble-eval))
 
-  ;; disassemble-eval should still be an interpreted function.
-  ;; clhs disassemble: "(If that function is an interpreted function,
-  ;; it is first compiled but the result of this implicit compilation
-  ;; is not installed.)"
-  (assert (sb-eval:interpreted-function-p #'disassemble-eval)))
+    ;; disassemble-eval should still be an interpreted function.
+    ;; clhs disassemble: "(If that function is an interpreted function,
+    ;; it is first compiled but the result of this implicit compilation
+    ;; is not installed.)"
+    (assert (sb-eval:interpreted-function-p #'disassemble-eval)))
 
-;; nor should it fail on generic functions or other funcallable instances
-(defgeneric disassemble-generic (x))
-(disassemble 'disassemble-generic)
-(let ((fin (sb-mop:make-instance 'sb-mop:funcallable-standard-object)))
-  (disassemble fin))
+  ;; nor should it fail on generic functions or other funcallable instances
+  (defgeneric disassemble-generic (x))
+  (disassemble 'disassemble-generic)
+  (let ((fin (make-instance 'sb-mop:funcallable-standard-object)))
+    (disassemble fin)))
 
 ;;; while we're at it, much the same applies to
 ;;; FUNCTION-LAMBDA-EXPRESSION:
 (defun fle-fun (x) x)
-(function-lambda-expression #'fle-fun)
 
 (let ((x 1)) (defun fle-closure (y) (if y (setq x y) x)))
-(function-lambda-expression #'fle-closure)
 
-#+sb-eval
-(progn
-  ;; Nor should it fail on interpreted functions
-  (let ((sb-ext:*evaluator-mode* :interpret))
-    (eval `(defun fle-eval (x) x))
-    (function-lambda-expression #'fle-eval))
+(with-test (:name :function-lambda-expression)
+  (flet ((fle-name (x)
+           (nth-value 2 (function-lambda-expression x))))
+    (assert (eql (fle-name #'fle-fun) 'fle-fun))
+    (assert (eql (fle-name #'fle-closure) 'fle-closure))
+    (assert (eql (fle-name #'disassemble-generic) 'disassemble-generic))
+    (function-lambda-expression
+     (make-instance 'sb-mop:funcallable-standard-object))
+    (function-lambda-expression
+     (make-instance 'generic-function))
+    (function-lambda-expression
+     (make-instance 'standard-generic-function))
+    #+sb-eval
+    (progn
+      (let ((sb-ext:*evaluator-mode* :interpret))
+        (eval `(defun fle-eval (x) x))
+        (assert (eql (fle-name #'fle-eval) 'fle-eval)))
 
-  ;; fle-eval should still be an interpreted function.
-  (assert (sb-eval:interpreted-function-p #'fle-eval)))
+      ;; fle-eval should still be an interpreted function.
+      (assert (sb-eval:interpreted-function-p #'fle-eval)))))
 
-;; nor should it fail on generic functions or other funcallable instances
-(defgeneric fle-generic (x))
-(function-lambda-expression #'fle-generic)
-(let ((fin (sb-mop:make-instance 'sb-mop:funcallable-standard-object)))
-  (function-lambda-expression fin))
 
 ;;; support for DESCRIBE tests
 (defstruct to-be-described a b)
 (defclass forward-describe-class (forward-describe-ref) (a))
 (let ((sb-ext:*evaluator-mode* :compile))
   (eval `(let (x) (defun closure-to-describe () (incf x)))))
+
+(with-test (:name :describe-empty-gf)
+  (describe (make-instance 'generic-function))
+  (describe (make-instance 'standard-generic-function)))
 
 ;;; DESCRIBE should run without signalling an error.
 (with-test (:name (describe :no-error))
