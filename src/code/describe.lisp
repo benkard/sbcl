@@ -34,6 +34,7 @@
 ;;; So it might be desirable to have the compiler not rely on this
 ;;; function, eventually.
 (defun function-lambda-expression (fun)
+  #+sb-doc
   "Return (VALUES DEFINING-LAMBDA-EXPRESSION CLOSURE-P NAME), where
   DEFINING-LAMBDA-EXPRESSION is NIL if unknown, or a suitable argument
   to COMPILE otherwise, CLOSURE-P is non-NIL if the function's definition
@@ -41,32 +42,32 @@
   NAME is some name (for debugging only) or NIL if there is no name."
   (declare (type function fun))
   (etypecase fun
-    #!+sb-eval
-    (sb!eval:interpreted-function
-     (let ((name (sb!eval:interpreted-function-name fun))
-           (lambda-list (sb!eval:interpreted-function-lambda-list fun))
-           (declarations (sb!eval:interpreted-function-declarations fun))
-           (body (sb!eval:interpreted-function-body fun)))
+    #+sb-eval
+    (sb-eval:interpreted-function
+     (let ((name (sb-eval:interpreted-function-name fun))
+           (lambda-list (sb-eval:interpreted-function-lambda-list fun))
+           (declarations (sb-eval:interpreted-function-declarations fun))
+           (body (sb-eval:interpreted-function-body fun)))
        (values `(lambda ,lambda-list
                   ,@(when declarations `((declare ,@declarations)))
                   ,@body)
                t name)))
-    #!+sb-eval
-    (sb!eval2:minimally-compiled-function
-     (let ((name (sb!eval2:minimally-compiled-function-name fun))
-           (lambda-list (sb!eval2:minimally-compiled-function-lambda-list fun)))
+    #+sb-eval
+    (sb-eval2:minimally-compiled-function
+     (let ((name (sb-eval2:minimally-compiled-function-name fun))
+           (lambda-list (sb-eval2:minimally-compiled-function-lambda-list fun)))
        (declare (ignore lambda-list))
        (values nil t name)))
     (function
-     (let* ((name (%fun-name fun))
+     (let* ((name (fun-name fun))
             (fun (%simple-fun-self (%fun-fun fun)))
-            (code (sb!di::fun-code-header fun))
-            (info (sb!kernel:%code-debug-info code)))
+            (code (sb-di::fun-code-header fun))
+            (info (sb-kernel:%code-debug-info code)))
        (if info
-           (let ((source (sb!c::debug-info-source info)))
-             (cond ((and (sb!c::debug-source-form source)
-                         (eq (sb!c::debug-source-function source) fun))
-                    (values (sb!c::debug-source-form source)
+           (let ((source (sb-c::debug-info-source info)))
+             (cond ((and (sb-c::debug-source-form source)
+                         (eq (sb-c::debug-source-function source) fun))
+                    (values (sb-c::debug-source-form source)
                             nil
                             name))
                    ((legal-fun-name-p name)
