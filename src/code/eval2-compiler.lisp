@@ -342,6 +342,31 @@ FUNCTION-NAME can designate a local or global function."
     `(%global-call ,f ,@args*)))
 
 (defun %compile-form (form mode)
+  (let ((vcode
+          (%%compile-form form mode)))
+    (cond
+      ((and (member mode '(:compile-time-too :execute-tlf))
+            (not (and (consp form)
+                      (or
+                       ;; specially processed toplevel form?
+                       (member (first form)
+                               '(progn locally macrolet symbol-macrolet
+                                 eval-when))
+                       ;; local macro?
+                       (context-find-macro *context* (first form))
+                       ;; global macro?
+                       (and (symbolp (first form))
+                            (macro-function (first form)))))))
+       (funcall (prepare-form vcode) (make-null-environment))
+       (ecase mode
+         (:compile-time-too
+          vcode)
+         (:execute-tlf
+          (compile-nil))))
+      (t
+       vcode))))
+
+(defun %%compile-form (form mode)
   "Compile FORM into VM code in compilation mode MODE.
 
 FORM must be a valid Common Lisp form within the lexical context
@@ -350,22 +375,11 @@ FORM must be a valid Common Lisp form within the lexical context
 MODE controls the processing mode.  It must be one of
 
  - :EXECUTE (which enables non-toplevel compilation)
+ - :EXECUTE-TLF (for toplevel forms read from source code)
  - :COMPILE-TIME-TOO (set by EVAL-WHEN)
- - :NOT-COMPILE-TIME (the default for toplevel forms)
+ - :NOT-COMPILE-TIME (for toplevel forms read from a FASL)
 
 Do not call this function directly.  Call COMPILE-FORM instead."
-  (when (and (eq mode :compile-time-too)
-             (not (and (consp form)
-                       (or
-                        ;; specially processed toplevel form?
-                        (member (first form)
-                                '(progn locally macrolet symbol-macrolet))
-                        ;; local macro?
-                        (context-find-macro *context* (first form))
-                        ;; global macro?
-                        (and (symbolp (first form))
-                             (macro-function (first form)))))))
-    (eval form))
   (check-type *context* context)
   (values
    (cond
@@ -464,7 +478,7 @@ Do not call this function directly.  Call COMPILE-FORM instead."
                               (compile-nil)))))
                     ((or (member :execute times)
                          (member 'cl:eval times))
-                     (compile-progn body))
+                     (compile-progn body mode))
                     (t
                      (compile-nil)))))
            ((setq)

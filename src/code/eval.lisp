@@ -279,7 +279,7 @@
         (sb!eval2:native-environment->context lexenv)
         (lambda ()
           (sb!eval2:compile-form exp (if *eval-tlf-index*
-                                         :not-compile-time
+                                         :execute-tlf
                                          :execute)))))))
     ((:compile)
      (simple-eval-in-lexenv exp lexenv))))

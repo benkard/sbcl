@@ -33,7 +33,7 @@
 (defvar *dyn-vals*)
 ;;"An internal variable set by the implementation of LET to track values to bind to special variables."
 
-(declaim (type (member :execute :compile-time-too :not-compile-time) *mode*))
+(declaim (type (member :execute :execute-tlf :compile-time-too :not-compile-time) *mode*))
 (defvar *mode* :execute
   "The processing mode for COMPILE-FORM.")
 
